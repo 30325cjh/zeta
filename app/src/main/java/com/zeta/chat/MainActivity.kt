@@ -115,7 +115,7 @@ class MainActivity : ComponentActivity() {
                 .put("generationConfig", JSONObject().put("temperature", 0.75).put("maxOutputTokens", 3500)
                     .put("responseMimeType", "application/json"))
             val request = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=$key")
+                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$key")
                 .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
                 .build()
             val raw = http.newCall(request).execute().use { response ->
@@ -182,7 +182,7 @@ class MainActivity : ComponentActivity() {
                     JSONArray().put(JSONObject().put("text", prompt)))))
                 .put("generationConfig", JSONObject().put("temperature", 0.9).put("maxOutputTokens", 2048))
             val request = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=$key")
+                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$key")
                 .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
                 .build()
             http.newCall(request).execute().use { response ->
