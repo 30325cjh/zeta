@@ -59,9 +59,12 @@ class MainActivity : ComponentActivity() {
             ZetaTheme {
                 ZetaScreen(
                     initialSlots = loadSlots(),
+                    initialCharacters = loadCharacters(),
                     apiReady = BuildConfig.GEMINI_API_KEY.isNotBlank(),
                     onSave = ::saveSlots,
-                    onSend = ::askGemini
+                    onSaveCharacters = ::saveCharacters,
+                    onSend = ::askGemini,
+                    onGenerateCharacter = ::generateCharacter
                 )
             }
         }
@@ -86,6 +89,53 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { mutableListOf(ChatSlot()) }
     }
 
+    private fun loadCharacters(): List<CharacterProfile> =
+        charactersFromJson(prefs.getString("characters", null))
+
+    private fun saveCharacters(characters: List<CharacterProfile>) {
+        prefs.edit().putString("characters", charactersToJson(characters)).apply()
+    }
+
+    private suspend fun generateCharacter(brief: String): Result<CharacterProfile> = withContext(Dispatchers.IO) {
+        runCatching {
+            val key = BuildConfig.GEMINI_API_KEY
+            check(key.isNotBlank()) { "API 키가 없습니다. GitHub Secrets에 GEMINI_API_KEY를 등록해 주세요." }
+            val prompt = """
+                사용자가 제공한 메모를 바탕으로 대화형 AI 캐릭터의 상세 프로필 초안을 작성해라.
+                출력은 반드시 JSON 객체 하나만 반환한다. 마크다운 코드블록이나 설명은 쓰지 않는다.
+                필드는 name, age, background, personality, appearance, speechStyle, relationship, intro, examples, extra 이다.
+                모든 등장인물은 성인으로 설정한다. 입력에 없는 세부사항은 앞뒤가 맞도록 창작하되,
+                사용자가 명시한 사실이나 의도를 바꾸지 않는다. 각 필드는 구체적이고 대화 생성에 유용하게 작성한다.
+                examples에는 서로 다른 상황의 짧은 대사 예시를 3개 이상 넣는다.
+                사용자 메모:
+                $brief
+            """.trimIndent()
+            val payload = JSONObject().put("contents", JSONArray().put(JSONObject().put("parts",
+                JSONArray().put(JSONObject().put("text", prompt)))))
+                .put("generationConfig", JSONObject().put("temperature", 0.75).put("maxOutputTokens", 3500)
+                    .put("responseMimeType", "application/json"))
+            val request = Request.Builder()
+                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=$key")
+                .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+            val raw = http.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                check(response.isSuccessful) { "Gemini 오류 ${response.code}: ${body.take(300)}" }
+                JSONObject(body).getJSONArray("candidates").getJSONObject(0)
+                    .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
+            }
+            val clean = raw.trim().substringAfter("{").let { "{" + it.substringBeforeLast("}") + "}" }
+            val obj = JSONObject(clean)
+            CharacterProfile(
+                name = obj.optString("name"), age = obj.optString("age"),
+                background = obj.optString("background"), personality = obj.optString("personality"),
+                appearance = obj.optString("appearance"), speechStyle = obj.optString("speechStyle"),
+                relationship = obj.optString("relationship"), intro = obj.optString("intro"),
+                examples = obj.optString("examples"), extra = obj.optString("extra")
+            )
+        }
+    }
+
     private fun saveSlots(slots: List<ChatSlot>) {
         val all = JSONArray()
         slots.forEach { slot ->
@@ -100,13 +150,17 @@ class MainActivity : ComponentActivity() {
         prefs.edit().putString("slots", all.toString()).apply()
     }
 
-    private suspend fun askGemini(history: List<ChatLine>): Result<String> = withContext(Dispatchers.IO) {
+    private suspend fun askGemini(history: List<ChatLine>, characters: List<CharacterProfile>): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val key = BuildConfig.GEMINI_API_KEY
             check(key.isNotBlank()) { "API 키가 없습니다. GitHub Secrets에 GEMINI_API_KEY를 등록하고 다시 빌드해 주세요." }
             val transcript = history.takeLast(100).joinToString("\n") { "${it.speaker}: ${it.text}" }
+            val characterContext = characters.joinToString("\n\n") { it.toPromptText() }
             val prompt = """
                 너는 ZETA의 다중 캐릭터 대화 엔진이다. 아래 기록을 읽고 자연스럽게 대화를 이어라.
+                등록된 캐릭터 설정을 최우선으로 따르고, 등록되지 않은 캐릭터를 임의로 만들지 마라.
+                등록된 캐릭터:
+                $characterContext
                 캐릭터 발언은 반드시 '@캐릭터이름: 내용' 형식으로 출력한다.
                 사용자가 직접 쓴 '@이름: 내용'은 그 캐릭터가 실제로 말한 대사이므로 이를 반복하지 말고 맥락을 이어라.
                 일반 사용자 발언은 '나'의 말이다. 등장인물의 말투와 관계를 유지하라.
@@ -149,11 +203,16 @@ private fun ZetaTheme(content: @Composable () -> Unit) {
 @Composable
 private fun ZetaScreen(
     initialSlots: MutableList<ChatSlot>,
+    initialCharacters: List<CharacterProfile>,
     apiReady: Boolean,
     onSave: (List<ChatSlot>) -> Unit,
-    onSend: suspend (List<ChatLine>) -> Result<String>
+    onSaveCharacters: (List<CharacterProfile>) -> Unit,
+    onSend: suspend (List<ChatLine>, List<CharacterProfile>) -> Result<String>,
+    onGenerateCharacter: suspend (String) -> Result<CharacterProfile>
 ) {
     val slots = remember { mutableStateListOf<ChatSlot>().apply { addAll(initialSlots) } }
+    val characters = remember { mutableStateListOf<CharacterProfile>().apply { addAll(initialCharacters) } }
+    var showCharacters by remember { mutableStateOf(false) }
     var selected by remember { mutableIntStateOf(0) }
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -175,7 +234,7 @@ private fun ZetaScreen(
         busy = true
         status = "캐릭터가 생각하는 중..."
         scope.launch {
-            val result = onSend(slot.lines.toList())
+            val result = onSend(slot.lines.toList(), characters.toList())
             result.onSuccess { answer ->
                 parseRoleLines(answer, defaultSpeaker = "아리스").forEach { slot.lines.add(it.copy(userWritten = false)) }
                 status = "응답 완료"
@@ -207,6 +266,9 @@ private fun ZetaScreen(
                     }
                 },
                 actions = {
+                    TextButton(onClick = { showCharacters = true }) {
+                        Text("캐릭터", color = Color(0xFFB8C7F0))
+                    }
                     IconButton(onClick = {
                         if (slots.size < 100) {
                             slots.add(ChatSlot()); selected = slots.lastIndex; persist()
@@ -216,7 +278,7 @@ private fun ZetaScreen(
             )
         },
         bottomBar = {
-            Column(Modifier.fillMaxWidth().background(Color(0xFF171920)).navigationBarsPadding()) {
+            if (!showCharacters) Column(Modifier.fillMaxWidth().background(Color(0xFF171920)).navigationBarsPadding()) {
                 Text(status, color = Color.LightGray, fontSize = 11.sp, modifier = Modifier.padding(start = 14.dp, top = 5.dp))
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     BasicTextField(
@@ -239,7 +301,18 @@ private fun ZetaScreen(
         },
         containerColor = Color(0xFF101116)
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        if (showCharacters) {
+            CharacterManagerScreen(
+                initialCharacters = characters.toList(),
+                onBack = { showCharacters = false },
+                onSave = { updated ->
+                    characters.clear()
+                    characters.addAll(updated)
+                    onSaveCharacters(updated)
+                },
+                onGenerate = onGenerateCharacter
+            )
+        } else Column(Modifier.fillMaxSize().padding(padding)) {
             if (slot.lines.isEmpty()) {
                 Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center) {
