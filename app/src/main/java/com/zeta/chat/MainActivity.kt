@@ -177,7 +177,7 @@ private fun ZetaScreen(
         scope.launch {
             val result = onSend(slot.lines.toList())
             result.onSuccess { answer ->
-                parseRoleLines(answer).forEach { slot.lines.add(it.copy(userWritten = false)) }
+                parseRoleLines(answer, defaultSpeaker = "아리스").forEach { slot.lines.add(it.copy(userWritten = false)) }
                 status = "응답 완료"
             }.onFailure { status = it.message ?: "응답 실패" }
             busy = false
@@ -269,7 +269,7 @@ private fun ZetaScreen(
     }
 }
 
-private fun parseRoleLines(raw: String): List<ChatLine> {
+private fun parseRoleLines(raw: String, defaultSpeaker: String = "나"): List<ChatLine> {
     val result = mutableListOf<ChatLine>()
     raw.lines().forEach { source ->
         val line = source.trim()
@@ -278,7 +278,7 @@ private fun parseRoleLines(raw: String): List<ChatLine> {
         if (match != null) {
             result.add(ChatLine(speaker = match.groupValues[1].trim(),
                 text = match.groupValues[2].trim(), userWritten = true))
-        } else result.add(ChatLine(speaker = "나", text = line, userWritten = true))
+        } else result.add(ChatLine(speaker = defaultSpeaker, text = line, userWritten = defaultSpeaker == "나"))
     }
     return result
 }
