@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 data class CharacterProfile(
