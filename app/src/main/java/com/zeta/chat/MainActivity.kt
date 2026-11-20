@@ -220,15 +220,21 @@ private fun ZetaScreen(
 ) {
     val slots = remember { mutableStateListOf<ChatSlot>().apply { addAll(initialSlots) } }
     val characters = remember { mutableStateListOf<CharacterProfile>().apply { addAll(initialCharacters) } }
-    var showCharacters by remember { mutableStateOf(false) }
+    var screen by remember { mutableStateOf("home") }
+    var tab by remember { mutableStateOf("프롬프트") }
     var selected by remember { mutableIntStateOf(0) }
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf(if (apiReady) "Gemini 연결 준비됨" else "API 키 미설정 · GitHub Secret 필요") }
-    var refresh by remember { mutableIntStateOf(0) }
+    var menu by remember { mutableStateOf(false) }
+    var plotTitle by remember { mutableStateOf("") }
+    var plotDescription by remember { mutableStateOf("") }
+    var loreEntries by remember { mutableStateOf(listOf<Pair<String,String>>()) }
+    var styleValues by remember { mutableStateOf(mapOf("난이도" to "보통", "전개 속도" to "자연스러운", "시점" to "3인칭", "시제" to "현재", "응답 길이" to "자동", "표현 방식" to "기본")) }
+    var intro by remember { mutableStateOf("") }
+    var plotSaved by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val slot = slots.getOrNull(selected) ?: slots.first()
-    refresh.hashCode()
 
     fun persist() = onSave(slots.toList())
     fun send() {
@@ -237,116 +243,64 @@ private fun ZetaScreen(
         input = ""
         parseRoleLines(typed).forEach { slot.lines.add(it) }
         if (slot.title == "새 대화") slot.title = typed.take(24)
-        refresh++
         persist()
         busy = true
         status = "캐릭터가 생각하는 중..."
         scope.launch {
             val result = onSend(slot.lines.toList(), characters.toList())
             result.onSuccess { answer ->
-                parseRoleLines(answer, defaultSpeaker = "아리스").forEach { slot.lines.add(it.copy(userWritten = false)) }
+                parseRoleLines(answer, defaultSpeaker = characters.firstOrNull()?.name ?: "캐릭터")
+                    .forEach { slot.lines.add(it.copy(userWritten = false)) }
                 status = "응답 완료"
             }.onFailure { status = it.message ?: "응답 실패" }
             busy = false
-            refresh++
             persist()
         }
     }
 
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("ZETA", fontWeight = FontWeight.Bold)
-                    Text("대화 ${selected + 1} / ${slots.size}", fontSize = 11.sp, color = Color.Gray)
-                } },
-                navigationIcon = {
-                    var menu by remember { mutableStateOf(false) }
-                    Box {
-                        Text("대화 ▾", color = Color(0xFFB8C7F0),
-                            modifier = Modifier.clickable { menu = true }.padding(12.dp))
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            slots.forEachIndexed { index, item ->
-                                DropdownMenuItem(text = { Text("${index + 1}. ${item.title}") },
-                                    onClick = { selected = index; menu = false })
-                            }
-                        }
-                    }
-                },
-                actions = {
-                    TextButton(onClick = { showCharacters = true }) {
-                        Text("캐릭터", color = Color(0xFFB8C7F0))
-                    }
-                    IconButton(onClick = {
-                        if (slots.size < 100) {
-                            slots.add(ChatSlot()); selected = slots.lastIndex; persist()
-                        } else status = "대화 슬롯은 최대 100개입니다."
-                    }) { Icon(Icons.Default.Add, contentDescription = "새 대화") }
-                }
-            )
-        },
-        bottomBar = {
-            if (!showCharacters) Column(Modifier.fillMaxWidth().background(Color(0xFF171920)).navigationBarsPadding()) {
-                Text(status, color = Color.LightGray, fontSize = 11.sp, modifier = Modifier.padding(start = 14.dp, top = 5.dp))
-                Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    BasicTextField(
-                        value = input, onValueChange = { input = it },
-                        modifier = Modifier.weight(1f).background(Color(0xFF292C36), RoundedCornerShape(22.dp))
-                            .padding(horizontal = 16.dp, vertical = 13.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 15.sp),
-                        decorationBox = { inner ->
-                            if (input.isEmpty()) Text("메시지 입력  (@아리스: 내용)", color = Color.Gray)
-                            inner()
-                        },
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    IconButton(onClick = { send() }, enabled = !busy) {
-                        Icon(Icons.Default.Send, contentDescription = "전송", tint = Color(0xFF9DBBFF))
-                    }
-                }
+    when (screen) {
+        "characters" -> CharacterManagerScreen(
+            initialCharacters = characters.toList(),
+            onBack = { screen = "plot" },
+            onSave = { updated -> characters.clear(); characters.addAll(updated); onSaveCharacters(updated) },
+            onGenerate = onGenerateCharacter
+        )
+        "plot" -> PlotStudioScreen(
+            title = plotTitle, onTitle = { plotTitle = it },
+            description = plotDescription, onDescription = { plotDescription = it },
+            tab = tab, onTab = { tab = it },
+            characters = characters,
+            onCharacters = { screen = "characters" },
+            loreEntries = loreEntries, onLoreEntries = { loreEntries = it },
+            styleValues = styleValues, onStyleValues = { styleValues = it },
+            intro = intro, onIntro = { intro = it },
+            saved = plotSaved, onSavePlot = { plotSaved = true; status = "플롯 설정을 저장했어." },
+            onBack = { screen = "home" }
+        )
+        "chat" -> ChatStudioScreen(
+            slot = slot, slots = slots, selected = selected,
+            onSelect = { selected = it }, input = input, onInput = { input = it },
+            busy = busy, status = status, onSend = { send() },
+            onBack = { screen = "home" }, onNew = {
+                if (slots.size < 100) { slots.add(ChatSlot()); selected = slots.lastIndex; persist() }
+                else status = "대화 슬롯은 최대 100개입니다."
+            }, onBookmark = { line ->
+                val index = slot.lines.indexOfFirst { it.id == line.id }
+                if (index >= 0) { slot.lines[index] = slot.lines[index].copy(bookmarked = !line.bookmarked); persist() }
             }
-        },
-        containerColor = Color(0xFF101116)
-    ) { padding ->
-        if (showCharacters) {
-            CharacterManagerScreen(
-                initialCharacters = characters.toList(),
-                onBack = { showCharacters = false },
-                onSave = { updated ->
-                    characters.clear()
-                    characters.addAll(updated)
-                    onSaveCharacters(updated)
-                },
-                onGenerate = onGenerateCharacter
-            )
-        } else Column(Modifier.fillMaxSize().padding(padding)) {
-            if (slot.lines.isEmpty()) {
-                Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center) {
-                    Text("ZETA", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Color(0xFF9DBBFF))
-                    Text("캐릭터와 이야기를 시작해 보세요.", color = Color.LightGray)
-                    Spacer(Modifier.height(10.dp))
-                    Text("일반 문장은 내 말 · @이름: 문장은 해당 캐릭터의 말", color = Color.Gray, fontSize = 12.sp)
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(slot.lines.toList(), key = { it.id }) { line ->
-                        ChatBubble(line) {
-                            val index = slot.lines.indexOfFirst { it.id == line.id }
-                            if (index >= 0) slot.lines[index] = slot.lines[index].copy(bookmarked = !slot.lines[index].bookmarked)
-                            refresh++
-                            persist()
-                        }
-                    }
-                    if (busy) item { Text("캐릭터가 입력 중...", color = Color.Gray) }
-                }
+        )
+        else -> HomeStudioScreen(
+            plotTitle = plotTitle,
+            characterCount = characters.size,
+            chatCount = slots.size,
+            onOpenPlot = { screen = "plot" },
+            onOpenChat = { screen = "chat" },
+            onOpenCharacters = { screen = "characters" },
+            onNewChat = {
+                if (slots.size < 100) { slots.add(ChatSlot()); selected = slots.lastIndex; screen = "chat"; persist() }
+                else status = "대화 슬롯은 최대 100개입니다."
             }
-        }
+        )
     }
 }
 
