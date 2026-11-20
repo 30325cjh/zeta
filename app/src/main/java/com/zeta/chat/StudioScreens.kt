@@ -75,6 +75,7 @@ fun HomeStudioScreen(plotTitle:String, characterCount:Int, chatCount:Int, onOpen
  }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlotStudioScreen(title:String,onTitle:(String)->Unit,description:String,onDescription:(String)->Unit,
  tab:String,onTab:(String)->Unit,characters:List<CharacterProfile>,onCharacters:()->Unit,
@@ -165,6 +166,7 @@ fun PlotStudioScreen(title:String,onTitle:(String)->Unit,description:String,onDe
  }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatStudioScreen(slot:ChatSlot,slots:List<ChatSlot>,selected:Int,onSelect:(Int)->Unit,
  input:String,onInput:(String)->Unit,busy:Boolean,status:String,onSend:()->Unit,onBack:()->Unit,
