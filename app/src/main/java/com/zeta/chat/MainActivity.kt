@@ -45,7 +45,7 @@ data class ChatLine(
 )
 data class ChatSlot(
     val id: String = UUID.randomUUID().toString(),
-    val title: String = "새 대화",
+    var title: String = "새 대화",
     val lines: MutableList<ChatLine> = mutableListOf()
 )
 
