@@ -34,38 +34,77 @@ private val Muted = Color(0xFF929292)
 @Composable
 fun HomeStudioScreen(plotTitle:String, characterCount:Int, chatCount:Int, onOpenPlot:()->Unit,
  onOpenChat:()->Unit, onOpenCharacters:()->Unit, onNewChat:()->Unit) {
- var tab by remember { mutableStateOf("플롯") }
- Scaffold(containerColor=Bg, bottomBar={
+ var tab by remember { mutableStateOf("홈") }
+ var query by remember { mutableStateOf("") }
+ var category by remember { mutableStateOf("전체") }
+ val categories=listOf("전체","로맨스","판타지","일상","스릴러","SF")
+ Scaffold(containerColor=Bg,bottomBar={
   NavigationBar(containerColor=Color(0xFF191919)) {
-   listOf("플롯","설정집","피드").forEach { name ->
-    NavigationBarItem(selected=tab==name,onClick={tab=name},
-     icon={Text(if(name=="플롯") "▤" else if(name=="설정집") "▧" else "◎")},
+   listOf("홈","발견","만들기","보관함","마이").forEach { name ->
+    NavigationBarItem(selected=tab==name,onClick={ if(name=="만들기") onOpenPlot() else tab=name },
+     icon={Text(when(name){"홈"->"⌂";"발견"->"⌕";"만들기"->"＋";"보관함"->"▣";else->"●"},fontSize=19.sp)},
      label={Text(name)},colors=NavigationBarItemDefaults.colors(selectedIconColor=Purple,selectedTextColor=Color.White,unselectedIconColor=Muted,unselectedTextColor=Muted,indicatorColor=Color(0xFF30244C)))
    }
   }
  }) { p ->
-  Column(Modifier.fillMaxSize().padding(p).verticalScroll(rememberScrollState()).padding(18.dp)) {
+  Column(Modifier.fillMaxSize().padding(p).verticalScroll(rememberScrollState()).padding(horizontal=18.dp, vertical=12.dp)) {
    Row(verticalAlignment=Alignment.CenterVertically) {
-    Text("zeta",fontSize=29.sp,fontWeight=FontWeight.ExtraBold,color=Color.White)
-    Spacer(Modifier.weight(1f)); Text("⌕",fontSize=25.sp,color=Color.White); Text("☰",fontSize=23.sp,color=Color.White,modifier=Modifier.padding(start=18.dp))
+    Text("zeta",fontSize=30.sp,fontWeight=FontWeight.ExtraBold,color=Color.White)
+    Spacer(Modifier.weight(1f))
+    Text("⌕",fontSize=24.sp,color=Color.White,modifier=Modifier.clickable{tab="발견"}.padding(8.dp))
+    Text("☰",fontSize=22.sp,color=Color.White,modifier=Modifier.clickable{tab="마이"}.padding(8.dp))
    }
-   Spacer(Modifier.height(28.dp))
-   if(tab=="플롯") {
-    Text("나의 플롯",fontSize=21.sp,fontWeight=FontWeight.Bold,color=Color.White)
-    HomeCard(if(plotTitle.isBlank()) "새로운 이야기 만들기" else plotTitle,"프롬프트와 캐릭터, 세계관을 설정해 나만의 플롯을 만들어 보세요.",onOpenPlot)
-    Spacer(Modifier.height(25.dp))
-    Text("빠른 시작",fontSize=19.sp,fontWeight=FontWeight.Bold,color=Color.White)
-    Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-     Box(Modifier.weight(1f)){ HomeCard("대화 시작","저장된 대화 이어하기",onOpenChat) }
-     Box(Modifier.weight(1f)){ HomeCard("캐릭터",characterCount.toString()+"명 등록됨",onOpenCharacters) }
+   when(tab) {
+    "홈" -> {
+     Spacer(Modifier.height(18.dp))
+     Text("상상한 이야기를 시작해 보세요",fontSize=21.sp,fontWeight=FontWeight.Bold,color=Color.White)
+     Text("나만의 캐릭터와 세계를 만들고 대화해 보세요.",fontSize=13.sp,color=Muted,modifier=Modifier.padding(top=6.dp))
+     Card(Modifier.fillMaxWidth().padding(top=18.dp).clickable(onClick=onNewChat),colors=CardDefaults.cardColors(containerColor=Color(0xFF30254A)),shape=RoundedCornerShape(18.dp)) {
+      Column(Modifier.padding(20.dp)) {
+       Text("✦  새로운 이야기",color=Color.White,fontSize=19.sp,fontWeight=FontWeight.Bold)
+       Text("AI 캐릭터와 지금 바로 대화 시작",color=Color(0xFFD8CFF5),fontSize=13.sp,modifier=Modifier.padding(top=7.dp))
+       Button(onClick=onNewChat,modifier=Modifier.padding(top=12.dp),colors=ButtonDefaults.buttonColors(containerColor=Purple)){Text("대화 시작하기")}
+      }
+     }
+     Text("추천 작품",fontSize=19.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=25.dp,bottom=8.dp))
+     listOf("오늘부터 시작하는 우리들의 이야기" to "일상 · 관계 · 선택에 따라 달라지는 이야기","별빛 아래 마법 학교" to "판타지 · 마법과 비밀을 탐험하는 세계","마지막 열차의 승객" to "미스터리 · 낯선 승객들과의 대화").forEachIndexed { i,item ->
+      Card(Modifier.fillMaxWidth().padding(vertical=5.dp).clickable(onClick=onOpenPlot),colors=CardDefaults.cardColors(containerColor=PanelColor),shape=RoundedCornerShape(15.dp)) {
+       Row(Modifier.padding(15.dp),verticalAlignment=Alignment.CenterVertically) {
+        Box(Modifier.size(66.dp).background(listOf(Color(0xFF51416B),Color(0xFF354B66),Color(0xFF655044))[i],RoundedCornerShape(12.dp)),contentAlignment=Alignment.Center){Text(listOf("✦","✧","◇")[i],fontSize=28.sp,color=Color.White)}
+        Column(Modifier.weight(1f).padding(start=12.dp)){Text(item.first,color=Color.White,fontWeight=FontWeight.Bold);Text(item.second,color=Muted,fontSize=12.sp,modifier=Modifier.padding(top=5.dp));Text("작품 둘러보기  ›",color=Color(0xFFC7B8FF),fontSize=11.sp,modifier=Modifier.padding(top=8.dp))}
+       }
+      }
+     }
+     Text("내 활동",fontSize=18.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
+     Row(horizontalArrangement=Arrangement.spacedBy(9.dp),modifier=Modifier.padding(top=8.dp)) {
+      Box(Modifier.weight(1f)){HomeCard("내 플롯",if(plotTitle.isBlank())"새 작품 만들기" else plotTitle,onOpenPlot)}
+      Box(Modifier.weight(1f)){HomeCard("내 캐릭터","캐릭터 $characterCount명",onOpenCharacters)}
+     }
+     HomeCard("최근 대화","저장된 대화 $chatCount개 · 이어하기",onOpenChat)
     }
-    Spacer(Modifier.height(22.dp))
-    Text("최근 대화",fontSize=19.sp,fontWeight=FontWeight.Bold,color=Color.White)
-    HomeCard("대화 목록","저장된 대화 "+chatCount+"개 · 새 대화 만들기",onNewChat)
-    Button(onClick=onOpenPlot,modifier=Modifier.fillMaxWidth().padding(top=18.dp).height(52.dp),colors=ButtonDefaults.buttonColors(containerColor=Purple)) { Text("＋ 새 플롯 만들기") }
-   } else {
-    Text(if(tab=="설정집") "나의 설정집" else "피드",fontSize=22.sp,color=Color.White,fontWeight=FontWeight.Bold)
-    HomeCard(if(tab=="설정집") "플롯에서 설정집 관리" else "아직 표시할 피드가 없어요","플롯을 열어 설정집과 키워드를 등록하세요.",onOpenPlot)
+    "발견" -> {
+     Text("작품 발견",fontSize=23.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
+     OutlinedTextField(query,{query=it},modifier=Modifier.fillMaxWidth().padding(top=12.dp),singleLine=true,placeholder={Text("작품·캐릭터 검색",color=Muted)},colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedBorderColor=Purple,unfocusedBorderColor=Color.DarkGray))
+     Row(horizontalArrangement=Arrangement.spacedBy(7.dp),modifier=Modifier.padding(vertical=12.dp)){categories.forEach { c -> FilterChip(selected=category==c,onClick={category=c},label={Text(c)}) }}
+     Text("인기 작품",fontSize=18.sp,fontWeight=FontWeight.Bold,color=Color.White)
+     listOf("첫눈에 반한 옆자리" to "로맨스 · 캐릭터 중심 이야기","용사의 귀환" to "판타지 · 모험과 선택","우리 동네 작은 카페" to "일상 · 편안한 대화","기억을 잃은 탐정" to "미스터리 · 추리").filter { query.isBlank() || it.first.contains(query,true) || it.second.contains(query,true) }.forEach { item ->
+      HomeCard(item.first,item.second+" · 예시 작품 카드",onOpenPlot)
+     }
+     Text("현재는 탐색 UI와 샘플 카드 단계이며 실제 공개 작품 서버와 연결되지는 않았어.",color=Muted,fontSize=11.sp,modifier=Modifier.padding(top=12.dp))
+    }
+    "보관함" -> {
+     Text("보관함",fontSize=23.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
+     HomeCard("내 플롯",if(plotTitle.isBlank())"아직 저장한 작품이 없어" else plotTitle,onOpenPlot)
+     HomeCard("내 대화","저장된 대화 $chatCount개",onOpenChat)
+     HomeCard("내 캐릭터","등록된 캐릭터 $characterCount명",onOpenCharacters)
+    }
+    "마이" -> {
+     Text("마이페이지",fontSize=23.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
+     StudioPanel { Text("ZETA 사용자",color=Color.White,fontSize=18.sp,fontWeight=FontWeight.Bold);Text("개인 창작 공간",color=Muted,fontSize=12.sp) }
+     HomeCard("내 작품 관리","플롯 편집 및 설정",onOpenPlot)
+     HomeCard("캐릭터 관리","캐릭터 생성·수정·삭제",onOpenCharacters)
+     HomeCard("대화 기록","총 $chatCount개 대화",onOpenChat)
+    }
    }
   }
  }
