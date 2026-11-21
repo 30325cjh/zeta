@@ -81,12 +81,13 @@ fun PlotStudioScreen(title:String,onTitle:(String)->Unit,description:String,onDe
  tab:String,onTab:(String)->Unit,characters:List<CharacterProfile>,onCharacters:()->Unit,
  loreEntries:List<Pair<String,String>>,onLoreEntries:(List<Pair<String,String>>)->Unit,
  styleValues:Map<String,String>,onStyleValues:(Map<String,String>)->Unit,
- intro:String,onIntro:(String)->Unit,saved:Boolean,onSavePlot:()->Unit,onBack:()->Unit) {
+ intro:String,onIntro:(String)->Unit,saved:Boolean,onSavePlot:()->Unit,
+ onGenerateStudio:(String)->Unit,studioBusy:Boolean,studioMessage:String,onBack:()->Unit) {
  val tabs=listOf("프롬프트","설정집","스타일","플러그인","인트로","소개","설정")
  Scaffold(containerColor=Bg,topBar={
   TopAppBar(title={Text("플롯",color=Color.White,fontWeight=FontWeight.Bold)},
    navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}},
-   actions={TextButton(onClick=onSavePlot){Text(if(saved) "저장됨" else "등록",color=Color.White)}},
+   actions={TextButton(onClick={onGenerateStudio(tab)},enabled=!studioBusy){Text(if(studioBusy) "AI 작성 중" else "✨ AI로 만들기",color=Color(0xFFC7B8FF))};TextButton(onClick=onSavePlot){Text(if(saved) "저장됨" else "저장",color=Color.White)}},
    colors=TopAppBarDefaults.topAppBarColors(containerColor=Bg))
  }) { p ->
   Column(Modifier.fillMaxSize().padding(p)) {
@@ -113,6 +114,7 @@ fun PlotStudioScreen(title:String,onTitle:(String)->Unit,description:String,onDe
      }
      "설정집" -> {
       Text("설정집을 연결해 주세요",color=Color.White,fontSize=18.sp,fontWeight=FontWeight.Bold)
+       if (studioMessage.isNotBlank()) Text(studioMessage,color=Color(0xFFC7B8FF),fontSize=12.sp)
       Text("설정집에 등록한 키워드가 언급될 때 작성한 내용이 AI에게 전달됩니다.",color=Muted,fontSize=13.sp)
       Button(onClick={onLoreEntries(loreEntries+("" to ""))},modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF3A3A3A))) { Text("＋ 설정집 연결 / 새 설정 추가") }
       Text("내 설정집  ›",color=Color.White,fontWeight=FontWeight.Bold)
@@ -126,6 +128,8 @@ fun PlotStudioScreen(title:String,onTitle:(String)->Unit,description:String,onDe
      }
      "스타일" -> {
       Text("스타일을 자유롭게 조정해 보세요",color=Color.White,fontSize=18.sp,fontWeight=FontWeight.Bold)
+       if (styleValues["AI 추가 지침"].orEmpty().isNotBlank()) StudioPanel { Text("AI 추가 지침",color=Color.White,fontWeight=FontWeight.Bold); Text(styleValues["AI 추가 지침"].orEmpty(),color=Muted) }
+       if (studioMessage.isNotBlank()) Text(studioMessage,color=Color(0xFFC7B8FF),fontSize=12.sp)
       listOf("난이도" to listOf("쉬운","보통","어려운","극한"),"전개 속도" to listOf("빠른","자연스러운","느린"),"시점" to listOf("1인칭","2인칭","3인칭"),"시제" to listOf("과거","현재"),"응답 길이" to listOf("짧은","중간","긴","자동"),"표현 방식" to listOf("대화 더하기","기본","행동 더하기")).forEach { pair ->
        StudioPanel {
         Text(pair.first,color=Color.White,fontWeight=FontWeight.Bold)
@@ -147,10 +151,12 @@ fun PlotStudioScreen(title:String,onTitle:(String)->Unit,description:String,onDe
      "인트로" -> {
       Text("첫 상황을 만들어 주세요",color=Color.White,fontWeight=FontWeight.Bold,fontSize=18.sp)
       StudioPanel { StudioField("첫 상황 / 인트로",intro,onIntro,12,"*상황을 설명하고 캐릭터의 첫 대사를 작성해주세요*") }
+       if (studioMessage.isNotBlank()) Text(studioMessage,color=Color(0xFFC7B8FF),fontSize=12.sp)
      }
      "소개" -> {
       Text("커버",color=Color.White,fontWeight=FontWeight.Bold)
-      StudioPanel { Box(Modifier.fillMaxWidth().height(145.dp).background(Color(0xFF292929),RoundedCornerShape(10.dp)),contentAlignment=Alignment.Center){Text("＋ 커버 이미지 추가",color=Muted)}; Text("짧은 소개",color=Color.White); Text("해시태그  ＋ 추가",color=Color(0xFFC7B8FF)); Text("소개글",color=Color.White) }
+      StudioPanel { Text("짧은 소개 및 해시태그",color=Color.White,fontWeight=FontWeight.Bold); Text("상단의 AI로 만들기로 소개문과 해시태그 초안을 생성할 수 있어.",color=Muted) }
+       if (studioMessage.isNotBlank()) Text(studioMessage,color=Color(0xFFC7B8FF),fontSize=12.sp)
      }
      "설정" -> {
       Text("플롯 설정",color=Color.White,fontWeight=FontWeight.Bold,fontSize=18.sp)
