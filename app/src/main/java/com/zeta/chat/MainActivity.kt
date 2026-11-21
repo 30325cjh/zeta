@@ -177,7 +177,7 @@ class MainActivity : ComponentActivity() {
         prefs.edit().putString("slots", all.toString()).apply()
     }
 
-    private suspend fun askGemini(history: List<ChatLine>, characters: List<CharacterProfile>): Result<String> = withContext(Dispatchers.IO) {
+    private suspend fun askGemini(history: List<ChatLine>, characters: List<CharacterProfile>, plotContext: String): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val key = BuildConfig.GEMINI_API_KEY
             check(key.isNotBlank()) { "API 키가 없습니다. GitHub Secrets에 GEMINI_API_KEY를 등록하고 다시 빌드해 주세요." }
@@ -242,7 +242,7 @@ private fun ZetaScreen(
     apiReady: Boolean,
     onSave: (List<ChatSlot>) -> Unit,
     onSaveCharacters: (List<CharacterProfile>) -> Unit,
-    onSend: suspend (List<ChatLine>, List<CharacterProfile>) -> Result<String>,
+    onSend: suspend (List<ChatLine>, List<CharacterProfile>, String) -> Result<String>,
     onGenerateCharacter: suspend (String) -> Result<CharacterProfile>,
     onGenerateStudio: suspend (String, String) -> Result<String>
 ) {
@@ -263,6 +263,13 @@ private fun ZetaScreen(
     var plotSaved by remember { mutableStateOf(false) }
     var studioBusy by remember { mutableStateOf(false) }
     var studioMessage by remember { mutableStateOf("") }
+    val plotContext = buildString {
+        appendLine("플롯 제목: $plotTitle")
+        appendLine("플롯 설명: $plotDescription")
+        appendLine("인트로: $intro")
+        appendLine("스타일 지침: $styleValues")
+        loreEntries.forEach { (title, body) -> appendLine("설정집 [$title]: $body") }
+    }
     val scope = rememberCoroutineScope()
     val slot = slots.getOrNull(selected) ?: slots.first()
 
@@ -277,7 +284,7 @@ private fun ZetaScreen(
         busy = true
         status = "캐릭터가 생각하는 중..."
         scope.launch {
-            val result = onSend(slot.lines.toList(), characters.toList())
+            val result = onSend(slot.lines.toList(), characters.toList(), plotContext)
             result.onSuccess { answer ->
                 parseRoleLines(answer, defaultSpeaker = characters.firstOrNull()?.name ?: "캐릭터")
                     .forEach { slot.lines.add(it.copy(userWritten = false)) }
