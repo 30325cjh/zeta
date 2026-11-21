@@ -95,15 +95,15 @@ fun HomeStudioScreen(plotTitle:String, characterCount:Int, chatCount:Int, onOpen
     "보관함" -> {
      Text("보관함",fontSize=23.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
      HomeCard("내 플롯",if(plotTitle.isBlank())"아직 저장한 작품이 없어" else plotTitle,onOpenPlot)
-     HomeCard("내 대화","저장된 대화 $chatCount개",onOpenChat)
-     HomeCard("내 캐릭터","등록된 캐릭터 $characterCount명",onOpenCharacters)
+     HomeCard("내 대화","저장된 대화 ${chatCount}개",onOpenChat)
+     HomeCard("내 캐릭터","등록된 캐릭터 ${characterCount}명",onOpenCharacters)
     }
     "설정" -> {
      Text("개인 설정",fontSize=23.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
      StudioPanel { Text("개인용 ZETA",color=Color.White,fontSize=18.sp,fontWeight=FontWeight.Bold);Text("작품과 대화는 이 기기에 저장",color=Muted,fontSize=12.sp) }
      HomeCard("내 작품 관리","플롯 편집 및 설정",onOpenPlot)
      HomeCard("캐릭터 관리","캐릭터 생성·수정·삭제",onOpenCharacters)
-     HomeCard("대화 기록","총 $chatCount개 대화",onOpenChat)
+     HomeCard("대화 기록","총 ${chatCount}개 대화",onOpenChat)
     }
    }
   }
