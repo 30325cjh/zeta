@@ -356,7 +356,6 @@ private fun ZetaScreen(
             },
             studioBusy = studioBusy, studioMessage = studioMessage,
             pluginFlags = pluginFlags, onPluginToggle = { name, enabled -> pluginFlags = pluginFlags + (name to enabled); plotSaved = false },
-            pluginFlags = pluginFlags, onPluginToggle = { name, enabled -> pluginFlags = pluginFlags + (name to enabled); plotSaved = false },
             onBack = { screen = "home" }
         )
         "chat" -> ChatStudioScreen(
