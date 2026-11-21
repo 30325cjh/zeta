@@ -388,7 +388,7 @@ private fun ZetaApp() {
                     OutlinedTextField(value = keyDraft, onValueChange = { keyDraft = it }, singleLine = true,
                         visualTransformation = PasswordVisualTransformation(), placeholder = { Text("API 키 입력") }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
-                    Text("모델: Gemini 2.5 Flash-Lite", color = Muted, fontSize = 12.sp)
+                    Text("모델: Gemini 3.5 Flash-Lite", color = Muted, fontSize = 12.sp)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("성인 롤플레이 모드", color = MainText, fontSize = 13.sp)
@@ -577,17 +577,20 @@ $prompt
         val content = if (line.fromCharacter) line.speaker + ": " + line.body else line.body
         contents.put(JSONObject().put("role", role).put("parts", JSONArray().put(JSONObject().put("text", content))))
     }
+    if (contents.length() > 0 && contents.optJSONObject(contents.length() - 1)?.optString("role") == "model") {
+        contents.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", "방금까지의 캐릭터 발화와 행동을 대화 맥락으로 반영하고, 그 다음 상황을 자연스럽게 이어가라."))))
+    }
     val body = JSONObject()
         .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
         .put("contents", contents)
-        .put("generationConfig", JSONObject().put("temperature", 0.95).put("topP", 0.95).put("maxOutputTokens", 2400))
+        .put("generationConfig", JSONObject().put("maxOutputTokens", 2400))
     val client = OkHttpClient.Builder().connectTimeout(25, TimeUnit.SECONDS).readTimeout(90, TimeUnit.SECONDS).writeTimeout(30, TimeUnit.SECONDS).build()
     val media = "application/json; charset=utf-8".toMediaType()
     var lastError = "요청 실패"
     for (attempt in 0..3) {
         try {
             val request = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" + apiKey)
+                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=" + apiKey)
                 .post(body.toString().toRequestBody(media)).build()
             client.newCall(request).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
@@ -627,9 +630,9 @@ private fun generatePersonaDetails(apiKey: String, concept: String, tagline: Str
             "personality에는 성격, 말투, 배경, 관계, 대화 습관을 구체적으로 적는다."
         val body = JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
-            .put("generationConfig", JSONObject().put("temperature", 0.9).put("maxOutputTokens", 1400))
+            .put("generationConfig", JSONObject().put("maxOutputTokens", 1400))
         val request = Request.Builder()
-            .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" + apiKey)
+            .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=" + apiKey)
             .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
         val client = OkHttpClient.Builder().connectTimeout(25, TimeUnit.SECONDS).readTimeout(90, TimeUnit.SECONDS).build()
         client.newCall(request).execute().use { response ->
