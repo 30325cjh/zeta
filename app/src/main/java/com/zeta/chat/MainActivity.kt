@@ -123,6 +123,7 @@ private fun ZetaApp() {
     var currentRoomId by remember { mutableStateOf("") }
     var draft by remember { mutableStateOf("") }
     var apiKey by remember { mutableStateOf(prefs.getString("api_key", "") ?: "") }
+    var adultMode by remember { mutableStateOf(prefs.getBoolean("adult_mode", true)) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
@@ -189,7 +190,7 @@ private fun ZetaApp() {
             val latest = rooms.firstOrNull { it.id == room.id } ?: room
             val people = latest.personaIds.mapNotNull { id -> personas.firstOrNull { it.id == id } }
             val result = withContext(Dispatchers.IO) {
-                askZeta(apiKey.ifBlank { BuildConfig.GEMINI_API_KEY }, people, latest.messages, target?.name)
+                askZeta(apiKey.ifBlank { BuildConfig.GEMINI_API_KEY }, people, latest.messages, target?.name, adultMode)
             }
             if (result.isSuccess) {
                 updateRoom(room.id) { it.copy(messages = it.messages + result.getOrThrow(), updatedAt = System.currentTimeMillis()) }
@@ -388,6 +389,16 @@ private fun ZetaApp() {
                         visualTransformation = PasswordVisualTransformation(), placeholder = { Text("API 키 입력") }, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
                     Text("모델: Gemini 2.5 Flash-Lite", color = Muted, fontSize = 12.sp)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("성인 롤플레이 모드", color = MainText, fontSize = 13.sp)
+                            Text("기본 활성화 · 캐릭터는 성인으로 설정", color = Muted, fontSize = 11.sp)
+                        }
+                        Switch(checked = adultMode, onCheckedChange = {
+                            adultMode = it
+                            prefs.edit().putBoolean("adult_mode", it).apply()
+                        })
+                    }
                     Text("캐릭터·대화방·대화 기록은 이 기기에 저장됩니다. 공개 피드, 랭킹, 댓글, 유료 재화는 없습니다.", color = Muted, fontSize = 11.sp)
                 }
             },
@@ -536,10 +547,11 @@ private fun EditorField(label: String, value: String, onValue: (String) -> Unit,
         textStyle = TextStyle(color = MainText, fontSize = 14.sp))
 }
 
-private fun askZeta(apiKey: String, people: List<Persona>, history: List<ChatLine>, directedTo: String?): Result<List<ChatLine>> {
+private fun askZeta(apiKey: String, people: List<Persona>, history: List<ChatLine>, directedTo: String?, adultMode: Boolean): Result<List<ChatLine>> {
     if (apiKey.isBlank()) return Result.failure(IllegalStateException("API 키가 없어요. 설정에서 Gemini API 키를 입력해 주세요."))
     if (people.isEmpty()) return Result.failure(IllegalStateException("이 대화방에 참여 중인 캐릭터가 없어요. 참여 설정에서 캐릭터를 선택해 주세요."))
     val prompt = people.joinToString("\n\n") { "이름: " + it.name + "\n소개: " + it.tagline + "\n성격/말투/배경: " + it.personality }
+    val adultGuidance = if (adultMode) "성인 모드가 켜져 있다. 모든 인물은 명시적인 성인이며, 성인 인물 간 성숙한 로맨스와 성인 주제를 다룰 수 있다. 미성년자를 성적 상황에 포함하지 않는다." else "일반 대화 모드로 유지하고 노골적인 성인 주제는 피한다."
     val system = """너는 개인용 AI 캐릭터 채팅 앱의 대화 엔진이다.
 다음 캐릭터들을 한 대화방에서 연기한다.
 $prompt
@@ -553,10 +565,13 @@ $prompt
 - 한 명만 말할 때도 '캐릭터이름: 내용' 형식을 사용한다.
 - 사용자가 쓴 말이나 캐릭터가 이미 한 말을 그대로 반복하지 말고 다음 상황을 이어간다.
 - 대화의 앞뒤 맥락과 인물 관계를 유지한다. 설정에 없는 사실을 이미 확정된 사실처럼 지어내지 않는다.
-- 모든 캐릭터는 명시적으로 성인인 허구의 인물이다.
+- $adultGuidance
 - 공개 커뮤니티, 랭킹, 댓글, 코인, 유료 결제 기능은 존재하지 않는 앱이다.
 """
     val contents = JSONArray()
+    if (history.firstOrNull()?.fromCharacter == true) {
+        contents.put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", "대화가 시작되었다. 캐릭터가 먼저 인사를 건넸다."))))
+    }
     history.takeLast(40).forEach { line ->
         val role = if (line.fromCharacter) "model" else "user"
         val content = if (line.fromCharacter) line.speaker + ": " + line.body else line.body
