@@ -200,6 +200,9 @@ class MainActivity : ComponentActivity() {
                 사용자가 직접 쓴 '@이름: 내용'은 그 캐릭터가 실제로 말한 대사이므로 이를 반복하지 말고 맥락을 이어라.
                 일반 사용자 발언은 '나'의 말이다. 등장인물의 말투와 관계를 유지하라.
                 행동 묘사는 *행동 묘사* 형식을 쓸 수 있다.
+                플롯 설정과 설정집은 이 대화의 세계관·사건·문체에 적용한다. 설정이 서로 충돌하면 사용자가 직접 입력한 최신 설정을 우선한다.
+                플롯 설정:
+                $plotContext
                 출력은 이어지는 캐릭터 발언만 작성하라. 등록된 캐릭터 중 누가 등장할지는 상황에 맞춰 자율적으로 판단하라.
                 대화 기록:
                 $transcript
@@ -282,7 +285,6 @@ private fun ZetaScreen(
         appendLine("플롯 설명: $plotDescription")
         appendLine("인트로: $intro")
         appendLine("스타일 지침: $styleValues")
-        appendLine("활성화된 플롯 기능: " + pluginFlags.filterValues { it }.keys.joinToString(", "))
         appendLine("활성화된 플롯 기능: " + pluginFlags.filterValues { it }.keys.joinToString(", "))
         loreEntries.forEach { (title, body) -> appendLine("설정집 [$title]: $body") }
     }
