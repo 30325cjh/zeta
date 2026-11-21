@@ -18,3 +18,5 @@ Chats and character profiles are stored locally on the device. No public feed, r
 - Multi-character chat participation and `@Character: message` roleplay input
 - `*action text*` rendering and AI-assisted character profile creation
 - Gemini 2.5 Flash-Lite with retry handling
+
+- Adult roleplay preference is enabled by default and can be switched off in settings.
