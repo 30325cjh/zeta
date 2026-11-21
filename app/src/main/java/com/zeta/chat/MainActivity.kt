@@ -256,7 +256,7 @@ private fun ZetaScreen(
     var status by remember { mutableStateOf(if (apiReady) "Gemini 연결 준비됨" else "API 키 미설정 · GitHub Secret 필요") }
     var menu by remember { mutableStateOf(false) }
     val appContext = androidx.compose.ui.platform.LocalContext.current
-    val plotPrefs = remember { appContext.getSharedPreferences("zeta_store", MODE_PRIVATE) }
+    val plotPrefs = remember { appContext.getSharedPreferences("zeta_store", android.content.Context.MODE_PRIVATE) }
     var plotTitle by remember { mutableStateOf(plotPrefs.getString("plot_title", "") ?: "") }
     var plotDescription by remember { mutableStateOf(plotPrefs.getString("plot_description", "") ?: "") }
     var loreEntries by remember { mutableStateOf(runCatching {
