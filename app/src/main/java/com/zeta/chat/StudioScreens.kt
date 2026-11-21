@@ -161,8 +161,8 @@ fun PlotStudioScreen(title:String,onTitle:(String)->Unit,description:String,onDe
      "설정" -> {
       Text("플롯 설정",color=Color.White,fontWeight=FontWeight.Bold,fontSize=18.sp)
       listOf("공개 여부","댓글 허용","리믹스 허용","성인 지향 설정","대화 기록 저장").forEach { label ->
-       var enabled by remember(label){mutableStateOf(label=="성인 지향 설정"||label=="대화 기록 저장")}
-       StudioPanel { Row(verticalAlignment=Alignment.CenterVertically){Text(label,color=Color.White,modifier=Modifier.weight(1f));Switch(checked=enabled,onCheckedChange={enabled=it})} }
+       val enabled = pluginFlags[label] ?: (label=="성인 지향 설정" || label=="대화 기록 저장")
+       StudioPanel { Row(verticalAlignment=Alignment.CenterVertically){Text(label,color=Color.White,modifier=Modifier.weight(1f));Switch(checked=enabled,onCheckedChange={onPluginToggle(label,it)})} }
       }
      }
     }
