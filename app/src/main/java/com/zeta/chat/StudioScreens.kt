@@ -40,9 +40,9 @@ fun HomeStudioScreen(plotTitle:String, characterCount:Int, chatCount:Int, onOpen
  val categories=listOf("전체","로맨스","판타지","일상","스릴러","SF")
  Scaffold(containerColor=Bg,bottomBar={
   NavigationBar(containerColor=Color(0xFF191919)) {
-   listOf("홈","발견","만들기","보관함","마이").forEach { name ->
+   listOf("홈","내 작품","만들기","보관함","설정").forEach { name ->
     NavigationBarItem(selected=tab==name,onClick={ if(name=="만들기") onOpenPlot() else tab=name },
-     icon={Text(when(name){"홈"->"⌂";"발견"->"⌕";"만들기"->"＋";"보관함"->"▣";else->"●"},fontSize=19.sp)},
+     icon={Text(when(name){"홈"->"⌂";"내 작품"->"▤";"만들기"->"＋";"보관함"->"▣";else->"⚙"},fontSize=19.sp)},
      label={Text(name)},colors=NavigationBarItemDefaults.colors(selectedIconColor=Purple,selectedTextColor=Color.White,unselectedIconColor=Muted,unselectedTextColor=Muted,indicatorColor=Color(0xFF30244C)))
    }
   }
@@ -82,11 +82,11 @@ fun HomeStudioScreen(plotTitle:String, characterCount:Int, chatCount:Int, onOpen
      }
      HomeCard("최근 대화","저장된 대화 $chatCount개 · 이어하기",onOpenChat)
     }
-    "발견" -> {
-     Text("작품 발견",fontSize=23.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
-     OutlinedTextField(query,{query=it},modifier=Modifier.fillMaxWidth().padding(top=12.dp),singleLine=true,placeholder={Text("작품·캐릭터 검색",color=Muted)},colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedBorderColor=Purple,unfocusedBorderColor=Color.DarkGray))
+    "내 작품" -> {
+     Text("내 작품",fontSize=23.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
+     OutlinedTextField(query,{query=it},modifier=Modifier.fillMaxWidth().padding(top=12.dp),singleLine=true,placeholder={Text("내 작품·캐릭터 검색",color=Muted)},colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,focusedBorderColor=Purple,unfocusedBorderColor=Color.DarkGray))
      Row(horizontalArrangement=Arrangement.spacedBy(7.dp),modifier=Modifier.padding(vertical=12.dp)){categories.forEach { c -> FilterChip(selected=category==c,onClick={category=c},label={Text(c)}) }}
-     Text("인기 작품",fontSize=18.sp,fontWeight=FontWeight.Bold,color=Color.White)
+     Text("내 작품 목록",fontSize=18.sp,fontWeight=FontWeight.Bold,color=Color.White)
      listOf("첫눈에 반한 옆자리" to "로맨스 · 캐릭터 중심 이야기","용사의 귀환" to "판타지 · 모험과 선택","우리 동네 작은 카페" to "일상 · 편안한 대화","기억을 잃은 탐정" to "미스터리 · 추리").filter { query.isBlank() || it.first.contains(query,true) || it.second.contains(query,true) }.forEach { item ->
       HomeCard(item.first,item.second+" · 예시 작품 카드",onOpenPlot)
      }
@@ -98,9 +98,9 @@ fun HomeStudioScreen(plotTitle:String, characterCount:Int, chatCount:Int, onOpen
      HomeCard("내 대화","저장된 대화 $chatCount개",onOpenChat)
      HomeCard("내 캐릭터","등록된 캐릭터 $characterCount명",onOpenCharacters)
     }
-    "마이" -> {
-     Text("마이페이지",fontSize=23.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
-     StudioPanel { Text("ZETA 사용자",color=Color.White,fontSize=18.sp,fontWeight=FontWeight.Bold);Text("개인 창작 공간",color=Muted,fontSize=12.sp) }
+    "설정" -> {
+     Text("개인 설정",fontSize=23.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
+     StudioPanel { Text("개인용 ZETA",color=Color.White,fontSize=18.sp,fontWeight=FontWeight.Bold);Text("작품과 대화는 이 기기에 저장",color=Muted,fontSize=12.sp) }
      HomeCard("내 작품 관리","플롯 편집 및 설정",onOpenPlot)
      HomeCard("캐릭터 관리","캐릭터 생성·수정·삭제",onOpenCharacters)
      HomeCard("대화 기록","총 $chatCount개 대화",onOpenChat)
