@@ -51,8 +51,8 @@ fun HomeStudioScreen(plotTitle:String, characterCount:Int, chatCount:Int, onOpen
    Row(verticalAlignment=Alignment.CenterVertically) {
     Text("zeta",fontSize=30.sp,fontWeight=FontWeight.ExtraBold,color=Color.White)
     Spacer(Modifier.weight(1f))
-    Text("⌕",fontSize=24.sp,color=Color.White,modifier=Modifier.clickable{tab="발견"}.padding(8.dp))
-    Text("☰",fontSize=22.sp,color=Color.White,modifier=Modifier.clickable{tab="마이"}.padding(8.dp))
+    Text("⌕",fontSize=24.sp,color=Color.White,modifier=Modifier.clickable{tab="내 작품"}.padding(8.dp))
+    Text("☰",fontSize=22.sp,color=Color.White,modifier=Modifier.clickable{tab="설정"}.padding(8.dp))
    }
    when(tab) {
     "홈" -> {
@@ -78,9 +78,9 @@ fun HomeStudioScreen(plotTitle:String, characterCount:Int, chatCount:Int, onOpen
      Text("내 활동",fontSize=18.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
      Row(horizontalArrangement=Arrangement.spacedBy(9.dp),modifier=Modifier.padding(top=8.dp)) {
       Box(Modifier.weight(1f)){HomeCard("내 플롯",if(plotTitle.isBlank())"새 작품 만들기" else plotTitle,onOpenPlot)}
-      Box(Modifier.weight(1f)){HomeCard("내 캐릭터","캐릭터 $characterCount명",onOpenCharacters)}
+      Box(Modifier.weight(1f)){HomeCard("내 캐릭터","캐릭터 ${characterCount}명",onOpenCharacters)}
      }
-     HomeCard("최근 대화","저장된 대화 $chatCount개 · 이어하기",onOpenChat)
+     HomeCard("최근 대화","저장된 대화 ${chatCount}개 · 이어하기",onOpenChat)
     }
     "내 작품" -> {
      Text("내 작품",fontSize=23.sp,fontWeight=FontWeight.Bold,color=Color.White,modifier=Modifier.padding(top=20.dp))
