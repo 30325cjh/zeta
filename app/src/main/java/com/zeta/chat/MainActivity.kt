@@ -237,7 +237,7 @@ private fun ZetaApp() {
                         Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
                             Text(line.speaker, color = if (mine) Muted else Accent, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                             Text(
-                                line.body,
+                                text = actionStyled(line.body),
                                 color = MainText,
                                 fontSize = 15.sp,
                                 lineHeight = 23.sp,
@@ -490,5 +490,32 @@ personality는 말투, 성격, 배경, 사용자와의 관계를 포함해 구�
         }
     } catch (e: Exception) {
         Result.failure(IllegalStateException(e.message ?: "캐릭터 생성 중 오류가 발생했어요."))
+    }
+}
+
+
+private fun actionStyled(value: String): androidx.compose.ui.text.AnnotatedString {
+    return androidx.compose.ui.text.buildAnnotatedString {
+        var cursor = 0
+        while (cursor < value.length) {
+            val start = value.indexOf('*', cursor)
+            if (start < 0) {
+                append(value.substring(cursor))
+                break
+            }
+            val end = value.indexOf('*', start + 1)
+            if (end < 0) {
+                append(value.substring(cursor))
+                break
+            }
+            append(value.substring(cursor, start))
+            pushStyle(androidx.compose.ui.text.SpanStyle(
+                color = Muted,
+                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+            ))
+            append(value.substring(start + 1, end))
+            pop()
+            cursor = end + 1
+        }
     }
 }
