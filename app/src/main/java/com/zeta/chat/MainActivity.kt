@@ -64,7 +64,8 @@ class MainActivity : ComponentActivity() {
                     onSave = ::saveSlots,
                     onSaveCharacters = ::saveCharacters,
                     onSend = ::askGemini,
-                    onGenerateCharacter = ::generateCharacter
+                    onGenerateCharacter = ::generateCharacter,
+                    onGenerateStudio = ::generateStudio
                 )
             }
         }
@@ -133,6 +134,32 @@ class MainActivity : ComponentActivity() {
                 relationship = obj.optString("relationship"), intro = obj.optString("intro"),
                 examples = obj.optString("examples"), extra = obj.optString("extra")
             )
+        }
+    }
+
+    private suspend fun generateStudio(kind: String, brief: String): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val key = BuildConfig.GEMINI_API_KEY
+            check(key.isNotBlank()) { "API 키가 없습니다. GEMINI_API_KEY를 확인해 주세요." }
+            val task = when (kind) {
+                "프롬프트" -> "플롯의 제목과 세계관 및 상황 설명을 작성해라."
+                "설정집" -> "설정집 항목 하나를 작성해라. 첫 줄 제목, 둘째 줄 키워드 목록, 이후 본문을 작성해라."
+                "스타일" -> "대화에 적용할 구체적인 문체와 연출 지침을 작성해라."
+                "인트로" -> "첫 상황과 캐릭터의 첫 대사를 포함한 인트로를 작성해라."
+                "소개" -> "작품의 짧은 소개와 해시태그를 작성해라."
+                else -> "플롯에 어울리는 이벤트와 상호작용 아이디어를 작성해라."
+            }
+            val prompt = "너는 ZETA 플롯 제작 AI다. 모든 등장인물은 성인이다. 기존 설정을 존중해라. $task\n참고:\n$brief\n결과만 출력해라."
+            val payload = JSONObject().put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
+                .put("generationConfig", JSONObject().put("temperature", 0.8).put("maxOutputTokens", 3000))
+            val request = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$key")
+                .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+            http.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                check(response.isSuccessful) { "Gemini 오류 ${response.code}: " + raw.take(250) }
+                JSONObject(raw).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
+                    .getJSONArray("parts").getJSONObject(0).getString("text").trim()
+            }
         }
     }
 
@@ -216,7 +243,8 @@ private fun ZetaScreen(
     onSave: (List<ChatSlot>) -> Unit,
     onSaveCharacters: (List<CharacterProfile>) -> Unit,
     onSend: suspend (List<ChatLine>, List<CharacterProfile>) -> Result<String>,
-    onGenerateCharacter: suspend (String) -> Result<CharacterProfile>
+    onGenerateCharacter: suspend (String) -> Result<CharacterProfile>,
+    onGenerateStudio: suspend (String, String) -> Result<String>
 ) {
     val slots = remember { mutableStateListOf<ChatSlot>().apply { addAll(initialSlots) } }
     val characters = remember { mutableStateListOf<CharacterProfile>().apply { addAll(initialCharacters) } }
@@ -233,6 +261,8 @@ private fun ZetaScreen(
     var styleValues by remember { mutableStateOf(mapOf("난이도" to "보통", "전개 속도" to "자연스러운", "시점" to "3인칭", "시제" to "현재", "응답 길이" to "자동", "표현 방식" to "기본")) }
     var intro by remember { mutableStateOf("") }
     var plotSaved by remember { mutableStateOf(false) }
+    var studioBusy by remember { mutableStateOf(false) }
+    var studioMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val slot = slots.getOrNull(selected) ?: slots.first()
 
@@ -274,7 +304,33 @@ private fun ZetaScreen(
             loreEntries = loreEntries, onLoreEntries = { loreEntries = it },
             styleValues = styleValues, onStyleValues = { styleValues = it },
             intro = intro, onIntro = { intro = it },
-            saved = plotSaved, onSavePlot = { plotSaved = true; status = "플롯 설정을 저장했어." },
+            saved = plotSaved, onSavePlot = {
+                prefs.edit().putString("plot_title", plotTitle).putString("plot_description", plotDescription)
+                    .putString("plot_intro", intro)
+                    .putString("plot_lore", JSONArray().apply { loreEntries.forEach { put(JSONArray().put(it.first).put(it.second)) } }.toString())
+                    .putString("plot_style", JSONObject(styleValues).toString()).apply()
+                plotSaved = true; status = "플롯 설정을 저장했어."
+            },
+            onGenerateStudio = { kind ->
+                if (!studioBusy) {
+                    studioBusy = true; studioMessage = "AI가 작성 중..."
+                    scope.launch {
+                        val brief = "제목: $plotTitle\n설명: $plotDescription\n캐릭터: ${characters.joinToString { it.toPromptText() }}\n설정집: ${loreEntries.joinToString("\n") { it.first + ": " + it.second }}\n스타일: $styleValues\n인트로: $intro"
+                        onGenerateStudio(kind, brief).onSuccess { result ->
+                            when (kind) {
+                                "프롬프트" -> { if (plotTitle.isBlank()) plotTitle = result.lineSequence().firstOrNull()?.take(60) ?: "새 플롯"; plotDescription = result }
+                                "설정집" -> { val title = result.lineSequence().firstOrNull()?.removePrefix("제목:")?.trim().orEmpty().ifBlank { "새 설정" }; loreEntries = loreEntries + (title to result) }
+                                "스타일" -> styleValues = styleValues + ("AI 추가 지침" to result)
+                                "인트로" -> intro = result
+                                else -> plotDescription = (plotDescription + "\n\n" + result).trim()
+                            }
+                            studioMessage = "AI 초안을 입력했어. 확인 후 저장해 줘."; plotSaved = false
+                        }.onFailure { studioMessage = it.message ?: "AI 작성 실패" }
+                        studioBusy = false
+                    }
+                }
+            },
+            studioBusy = studioBusy, studioMessage = studioMessage,
             onBack = { screen = "home" }
         )
         "chat" -> ChatStudioScreen(
