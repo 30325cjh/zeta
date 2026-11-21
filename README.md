@@ -10,3 +10,11 @@ Add a GitHub Actions repository secret named `GEMINI_API_KEY`. The app also incl
 Model: `gemini-2.5-flash-lite`.
 
 Chats and character profiles are stored locally on the device. No public feed, rankings, comments, coins, or paid features are included.
+
+
+## Included features
+- Local character profiles with custom avatar images
+- Multiple independent chat rooms with rename and deletion
+- Multi-character chat participation and `@Character: message` roleplay input
+- `*action text*` rendering and AI-assisted character profile creation
+- Gemini 2.5 Flash-Lite with retry handling
