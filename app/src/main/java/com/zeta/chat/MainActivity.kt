@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
                 사용자가 제공한 메모를 바탕으로 대화형 AI 캐릭터의 상세 프로필 초안을 작성해라.
                 출력은 반드시 JSON 객체 하나만 반환한다. 마크다운 코드블록이나 설명은 쓰지 않는다.
                 필드는 name, age, background, personality, appearance, speechStyle, relationship, intro, examples, extra 이다.
-                모든 등장인물은 성인으로 설정한다. 입력에 없는 세부사항은 앞뒤가 맞도록 창작하되,
+                모든 등장인물은 성인으로 설정한다. 성인 캐릭터 사이의 성숙한 관계와 성인용 주제는 맥락에 맞게 다룰 수 있다. 입력에 없는 세부사항은 앞뒤가 맞도록 창작하되,
                 사용자가 명시한 사실이나 의도를 바꾸지 않는다. 각 필드는 구체적이고 대화 생성에 유용하게 작성한다.
                 examples에는 서로 다른 상황의 짧은 대사 예시를 3개 이상 넣는다.
                 사용자 메모:
@@ -149,7 +149,7 @@ class MainActivity : ComponentActivity() {
                 "소개" -> "작품의 짧은 소개와 해시태그를 작성해라."
                 else -> "플롯에 어울리는 이벤트와 상호작용 아이디어를 작성해라."
             }
-            val prompt = "너는 ZETA 플롯 제작 AI다. 모든 등장인물은 성인이다. 기존 설정을 존중해라. $task\n참고:\n$brief\n결과만 출력해라."
+            val prompt = "너는 ZETA 플롯 제작 AI다. 모든 등장인물은 성인이다. 성인 캐릭터 사이의 성숙한 관계와 성인용 주제를 위한 설정을 맥락에 맞게 작성하되, 안전 정책을 우회하려 하지 마라. 기존 설정을 존중해라. $task\n참고:\n$brief\n결과만 출력해라."
             val payload = JSONObject().put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
                 .put("generationConfig", JSONObject().put("temperature", 0.8).put("maxOutputTokens", 3000))
             val request = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$key")
@@ -184,7 +184,7 @@ class MainActivity : ComponentActivity() {
             val transcript = history.takeLast(100).joinToString("\n") { "${it.speaker}: ${it.text}" }
             val characterContext = characters.joinToString("\n\n") { it.toPromptText() }
             val prompt = """
-                너는 ZETA의 다중 캐릭터 대화 엔진이다. 아래 기록을 읽고 자연스럽게 대화를 이어라.
+                너는 ZETA의 다중 캐릭터 대화 엔진이다. 모든 등장인물은 성인이며, 성인 캐릭터 사이의 성숙한 관계와 성인용 주제를 맥락에 맞게 다룰 수 있다. 아래 기록을 읽고 자연스럽게 대화를 이어라.
                 등록된 캐릭터는 모두 이 대화의 참여자이며, 상황에 따라 누구든 자연스럽게 등장할 수 있다.
                 등록된 캐릭터 설정을 최우선으로 따르고, 등록되지 않은 캐릭터를 임의로 만들지 마라.
                 등록된 캐릭터:
