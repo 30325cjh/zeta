@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -179,6 +181,8 @@ fun ChatStudioScreen(slot:ChatSlot,slots:List<ChatSlot>,selected:Int,onSelect:(I
  onNew:()->Unit,onBookmark:(ChatLine)->Unit) {
  var menu by remember{mutableStateOf(false)}
  var bookmarks by remember{mutableStateOf(false)}
+ val chatListState = rememberLazyListState()
+ val chatScope = rememberCoroutineScope()
  Scaffold(containerColor=Bg,topBar={
   TopAppBar(title={Column{Text(slot.title,color=Color.White,fontSize=15.sp);Text("ZETA · "+(selected+1)+"/"+slots.size,color=Muted,fontSize=10.sp)}},
    navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null,tint=Color.White)}},
@@ -195,7 +199,7 @@ fun ChatStudioScreen(slot:ChatSlot,slots:List<ChatSlot>,selected:Int,onSelect:(I
    Text(status,color=Muted,fontSize=10.sp)
   }
  }){p->
-  LazyColumn(Modifier.fillMaxSize().padding(p),contentPadding=PaddingValues(14.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+  LazyColumn(state=chatListState,modifier=Modifier.fillMaxSize().padding(p),contentPadding=PaddingValues(14.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
    if(slot.lines.isEmpty()) item{Text("첫 상황을 시작해 보세요",color=Color.White,modifier=Modifier.padding(top=100.dp))}
    items(slot.lines,key={it.id}){line->
     val mine=line.speaker=="나"
@@ -214,7 +218,7 @@ fun ChatStudioScreen(slot:ChatSlot,slots:List<ChatSlot>,selected:Int,onSelect:(I
  if(menu) AlertDialog(onDismissRequest={menu=false},title={Text("대화 메뉴")},text={
   Column{slots.forEachIndexed{i,s->Text((i+1).toString()+". "+s.title,modifier=Modifier.fillMaxWidth().clickable{onSelect(i);menu=false}.padding(8.dp))};Text("책갈피 목록",modifier=Modifier.clickable{bookmarks=true;menu=false}.padding(8.dp));Text("새 대화",modifier=Modifier.clickable{onNew();menu=false}.padding(8.dp))}
  },confirmButton={TextButton(onClick={menu=false}){Text("닫기")}})
- if(bookmarks) AlertDialog(onDismissRequest={bookmarks=false},title={Text("책갈피 목록")},text={Column{val marked=slot.lines.filter{it.bookmarked};if(marked.isEmpty())Text("저장된 책갈피가 없습니다.");marked.forEach{Text(it.speaker+": "+it.text.take(100),modifier=Modifier.padding(5.dp))}}},confirmButton={TextButton(onClick={bookmarks=false}){Text("닫기")}})
+ if(bookmarks) AlertDialog(onDismissRequest={bookmarks=false},title={Text("책갈피 목록")},text={Column{val marked=slot.lines.filter{it.bookmarked};if(marked.isEmpty())Text("저장된 책갈피가 없습니다.");marked.forEach { line -> Text(line.speaker+": "+line.text.take(100),modifier=Modifier.fillMaxWidth().clickable { bookmarks=false; chatScope.launch { val index=slot.lines.indexOfFirst { it.id==line.id }; if(index>=0) chatListState.animateScrollToItem(index) } }.padding(8.dp)) }}},confirmButton={TextButton(onClick={bookmarks=false}){Text("닫기")}})
 }
 
 @Composable private fun StudioPanel(content:@Composable ColumnScope.()->Unit){
