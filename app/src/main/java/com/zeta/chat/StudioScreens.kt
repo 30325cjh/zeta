@@ -82,7 +82,7 @@ fun PlotStudioScreen(title:String,onTitle:(String)->Unit,description:String,onDe
  loreEntries:List<Pair<String,String>>,onLoreEntries:(List<Pair<String,String>>)->Unit,
  styleValues:Map<String,String>,onStyleValues:(Map<String,String>)->Unit,
  intro:String,onIntro:(String)->Unit,saved:Boolean,onSavePlot:()->Unit,
- onGenerateStudio:(String)->Unit,studioBusy:Boolean,studioMessage:String,onBack:()->Unit) {
+ onGenerateStudio:(String)->Unit,studioBusy:Boolean,studioMessage:String,pluginFlags:Map<String,Boolean>,onPluginToggle:(String,Boolean)->Unit,onBack:()->Unit) {
  val tabs=listOf("프롬프트","설정집","스타일","플러그인","인트로","소개","설정")
  Scaffold(containerColor=Bg,topBar={
   TopAppBar(title={Text("플롯",color=Color.White,fontWeight=FontWeight.Bold)},
@@ -144,8 +144,8 @@ fun PlotStudioScreen(title:String,onTitle:(String)->Unit,description:String,onDe
      }
      "플러그인" -> {
       listOf("이벤트 컷","BGM","메시지 주고받기","주사위 이벤트","캐릭터의 일기","티어 리스트","LIVE 채팅창","엔딩","달력·시계","퀘스트","제타그램","익명 게시판","휴대폰 몰래 보기","돌발 이벤트","웹툰","러브라인","꿈 엿보기").forEach { name ->
-       var enabled by remember(name){mutableStateOf(false)}
-       StudioPanel { Row(verticalAlignment=Alignment.CenterVertically) { Column(Modifier.weight(1f)){Text(name,color=Color.White,fontWeight=FontWeight.Bold);Text("플롯에서 사용할 "+name+" 기능을 설정합니다.",color=Muted,fontSize=11.sp)}; Switch(checked=enabled,onCheckedChange={enabled=it}) } }
+       val enabled = pluginFlags[name] ?: false
+       StudioPanel { Row(verticalAlignment=Alignment.CenterVertically) { Column(Modifier.weight(1f)){Text(name,color=Color.White,fontWeight=FontWeight.Bold);Text("플롯에서 사용할 "+name+" 기능을 설정합니다.",color=Muted,fontSize=11.sp)}; Switch(checked=enabled,onCheckedChange={onPluginToggle(name,it)}) } }
       }
      }
      "인트로" -> {
