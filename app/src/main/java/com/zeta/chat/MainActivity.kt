@@ -282,6 +282,7 @@ private fun ZetaScreen(
         appendLine("플롯 설명: $plotDescription")
         appendLine("인트로: $intro")
         appendLine("스타일 지침: $styleValues")
+        appendLine("활성화된 플롯 기능: " + pluginFlags.filterValues { it }.keys.joinToString(", "))
         loreEntries.forEach { (title, body) -> appendLine("설정집 [$title]: $body") }
     }
     val scope = rememberCoroutineScope()
@@ -353,6 +354,7 @@ private fun ZetaScreen(
                 }
             },
             studioBusy = studioBusy, studioMessage = studioMessage,
+            pluginFlags = pluginFlags, onPluginToggle = { name, enabled -> pluginFlags = pluginFlags + (name to enabled); plotSaved = false },
             onBack = { screen = "home" }
         )
         "chat" -> ChatStudioScreen(
