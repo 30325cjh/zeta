@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -103,6 +104,9 @@ private fun ZetaApp() {
     var showPersonaEditor by remember { mutableStateOf(false) }
     var editingPersona by remember { mutableStateOf<Persona?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+    var showParticipants by remember { mutableStateOf(false) }
+    val chatListState = rememberLazyListState()
+    LaunchedEffect(messages.size, busy) { if (messages.isNotEmpty()) chatListState.animateScrollToItem(messages.lastIndex) }
     var apiKey by remember { mutableStateOf(prefs.getString("api_key", "") ?: "") }
     var selectedForChat by remember { mutableStateOf(personas.map { it.id }.toSet()) }
 
@@ -129,7 +133,7 @@ private fun ZetaApp() {
         error = ""
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-                askZeta(apiKey.ifBlank { BuildConfig.GEMINI_API_KEY }, personas.filter { selectedForChat.contains(it.id) }, messages.toList(), target?.name)
+                askZeta(apiKey.ifBlank { BuildConfig.GEMINI_API_KEY }, personas.filter { selectedForChat.contains(it.id) || it.name.equals(target?.name, true) }, messages.toList(), target?.name)
             }
             if (result.isSuccess) {
                 messages.add(ChatLine(result.getOrNull()?.first ?: (target?.name ?: personas.firstOrNull()?.name ?: "ZETA"), result.getOrNull()?.second ?: "", true))
@@ -219,10 +223,11 @@ private fun ZetaApp() {
                         Text(active?.name ?: "ZETA", color = MainText, fontWeight = FontWeight.Bold)
                         Text("AI 캐릭터와 대화 중", color = Muted, fontSize = 11.sp)
                     }
-                    TextButton(onClick = { selectedForChat = personas.map { it.id }.toSet() }) { Text("모두 참여", color = Accent, fontSize = 12.sp) }
+                    TextButton(onClick = { showParticipants = true }) { Text("참여 설정", color = Accent, fontSize = 12.sp) }
                 }
                 LazyColumn(
-                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp),
+                    state = chatListState,
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp),
                     reverseLayout = false,
                     contentPadding = PaddingValues(vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -271,6 +276,7 @@ private fun ZetaApp() {
     if (showPersonaEditor) {
         PersonaEditor(
             initial = editingPersona,
+            apiKey = apiKey.ifBlank { BuildConfig.GEMINI_API_KEY },
             onDismiss = { showPersonaEditor = false },
             onSave = { p ->
                 val index = personas.indexOfFirst { it.id == p.id }
@@ -279,6 +285,32 @@ private fun ZetaApp() {
                 persist()
                 showPersonaEditor = false
             }
+        )
+    }
+    if (showParticipants) {
+        AlertDialog(
+            onDismissRequest = { showParticipants = false },
+            containerColor = Panel,
+            title = { Text("대화 참여 캐릭터", color = MainText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    personas.forEach { persona ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = selectedForChat.contains(persona.id),
+                                onCheckedChange = { checked ->
+                                    if (checked) selectedForChat = selectedForChat + persona.id
+                                    else if (selectedForChat.size > 1) selectedForChat = selectedForChat - persona.id
+                                },
+                                colors = CheckboxDefaults.colors(checkedColor = Accent)
+                            )
+                            Text(persona.name, color = MainText)
+                        }
+                    }
+                    Text("선택한 캐릭터들이 대화 맥락을 공유합니다.", color = Muted, fontSize = 12.sp)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showParticipants = false }) { Text("완료", color = Accent) } }
         )
     }
     if (showSettings) {
@@ -303,11 +335,14 @@ private fun ZetaApp() {
 }
 
 @Composable
-private fun PersonaEditor(initial: Persona?, onDismiss: () -> Unit, onSave: (Persona) -> Unit) {
+private fun PersonaEditor(initial: Persona?, apiKey: String, onDismiss: () -> Unit, onSave: (Persona) -> Unit) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var tagline by remember { mutableStateOf(initial?.tagline ?: "") }
     var personality by remember { mutableStateOf(initial?.personality ?: "") }
     var greeting by remember { mutableStateOf(initial?.greeting ?: "") }
+    var generating by remember { mutableStateOf(false) }
+    var generateError by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Panel,
@@ -316,6 +351,35 @@ private fun PersonaEditor(initial: Persona?, onDismiss: () -> Unit, onSave: (Per
             Column(Modifier.heightIn(max = 520.dp)) {
                 EditorField("이름", name, { name = it })
                 EditorField("한 줄 소개", tagline, { tagline = it })
+                Button(
+                    onClick = {
+                        if (apiKey.isBlank()) {
+                            generateError = "설정에서 Gemini API 키를 먼저 등록해 주세요."
+                        } else {
+                            scope.launch {
+                                generating = true
+                                generateError = ""
+                                val result = withContext(Dispatchers.IO) { generatePersonaDetails(apiKey, name, tagline) }
+                                if (result.isSuccess) {
+                                    val p = result.getOrThrow()
+                                    name = p.name
+                                    tagline = p.tagline
+                                    personality = p.personality
+                                    greeting = p.greeting
+                                } else {
+                                    generateError = result.exceptionOrNull()?.message ?: "생성 실패"
+                                }
+                                generating = false
+                            }
+                        }
+                    },
+                    enabled = !generating,
+                    colors = ButtonDefaults.buttonColors(containerColor = Panel2, contentColor = Accent)
+                ) {
+                    if (generating) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    else Text("AI로 캐릭터 설정 만들기")
+                }
+                if (generateError.isNotBlank()) Text(generateError, color = Color(0xFFFF8B8B), fontSize = 11.sp)
                 EditorField("성격과 말투", personality, { personality = it }, minLines = 3)
                 EditorField("첫 인사", greeting, { greeting = it }, minLines = 2)
             }
@@ -394,4 +458,37 @@ $characterPrompt
         }
     }
     return Result.failure(IllegalStateException(lastError))
+}
+
+
+private fun generatePersonaDetails(apiKey: String, concept: String, tagline: String): Result<Persona> {
+    return try {
+        val prompt = """캐릭터 프로필을 만들어라. 사용자가 준 아이디어를 확장하되 허구의 성인 캐릭터로 작성한다.
+아이디어: $concept
+추가 설명: $tagline
+반드시 JSON 객체 하나만 출력한다. 키는 name, tagline, personality, greeting 이다.
+personality는 말투, 성격, 배경, 사용자와의 관계를 포함해 구체적으로 작성한다.
+"""
+        val body = JSONObject()
+            .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
+            .put("generationConfig", JSONObject().put("temperature", 0.9).put("maxOutputTokens", 1200))
+        val request = Request.Builder()
+            .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" + apiKey)
+            .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+        val client = OkHttpClient.Builder().connectTimeout(25, TimeUnit.SECONDS).readTimeout(75, TimeUnit.SECONDS).build()
+        client.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                val message = try { JSONObject(raw).optJSONObject("error")?.optString("message") ?: "HTTP " + response.code } catch (_: Exception) { "HTTP " + response.code }
+                return Result.failure(IllegalStateException(message))
+            }
+            val answer = JSONObject(raw).optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text").orEmpty()
+            val jsonText = Regex("\\{[\\s\\S]*\\}").find(answer)?.value ?: return Result.failure(IllegalStateException("AI가 올바른 프로필을 반환하지 않았어요. 다시 시도해 주세요."))
+            val o = JSONObject(jsonText)
+            Result.success(Persona(UUID.randomUUID().toString(), o.optString("name", concept).ifBlank { concept.ifBlank { "새 캐릭터" } }, o.optString("tagline"), o.optString("personality"), o.optString("greeting", "안녕하세요!")))
+        }
+    } catch (e: Exception) {
+        Result.failure(IllegalStateException(e.message ?: "캐릭터 생성 중 오류가 발생했어요."))
+    }
 }
