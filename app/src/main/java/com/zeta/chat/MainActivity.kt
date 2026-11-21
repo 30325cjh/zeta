@@ -11,11 +11,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,9 +29,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -35,398 +43,355 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
-data class ChatLine(
-    val id: String = UUID.randomUUID().toString(),
-    val speaker: String,
-    val text: String,
-    val userWritten: Boolean = false,
-    val bookmarked: Boolean = false
-)
-data class ChatSlot(
-    val id: String = UUID.randomUUID().toString(),
-    var title: String = "새 대화",
-    val lines: MutableList<ChatLine> = mutableListOf()
-)
+private val Bg = Color(0xFF101014)
+private val Panel = Color(0xFF1B1B22)
+private val Panel2 = Color(0xFF25252E)
+private val Accent = Color(0xFFB8A1FF)
+private val MainText = Color(0xFFF4F1FA)
+private val Muted = Color(0xFF9A96A5)
+
+data class Persona(val id: String, val name: String, val tagline: String, val personality: String, val greeting: String)
+data class ChatLine(val speaker: String, val body: String, val fromCharacter: Boolean)
 
 class MainActivity : ComponentActivity() {
-    private val prefs by lazy { getSharedPreferences("zeta_store", MODE_PRIVATE) }
-    private val http = OkHttpClient()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            ZetaTheme {
-                ZetaScreen(
-                    initialSlots = loadSlots(),
-                    initialCharacters = loadCharacters(),
-                    apiReady = BuildConfig.GEMINI_API_KEY.isNotBlank(),
-                    onSave = ::saveSlots,
-                    onSaveCharacters = ::saveCharacters,
-                    onSend = ::askGemini,
-                    onGenerateCharacter = ::generateCharacter,
-                    onGenerateStudio = ::generateStudio
-                )
-            }
-        }
-    }
-
-    private fun loadSlots(): MutableList<ChatSlot> {
-        val raw = prefs.getString("slots", null) ?: return mutableListOf(ChatSlot())
-        return try {
-            val arr = JSONArray(raw)
-            MutableList(arr.length()) { i ->
-                val obj = arr.getJSONObject(i)
-                val source = obj.optJSONArray("lines") ?: JSONArray()
-                val lines = MutableList(source.length()) { j ->
-                    val l = source.getJSONObject(j)
-                    ChatLine(l.optString("id", UUID.randomUUID().toString()),
-                        l.optString("speaker", "나"), l.optString("text", ""),
-                        l.optBoolean("userWritten"), l.optBoolean("bookmarked"))
-                }
-                ChatSlot(obj.optString("id", UUID.randomUUID().toString()),
-                    obj.optString("title", "대화"), lines)
-            }.ifEmpty { mutableListOf(ChatSlot()) }
-        } catch (_: Exception) { mutableListOf(ChatSlot()) }
-    }
-
-    private fun loadCharacters(): List<CharacterProfile> =
-        charactersFromJson(prefs.getString("characters", null))
-
-    private fun saveCharacters(characters: List<CharacterProfile>) {
-        prefs.edit().putString("characters", charactersToJson(characters)).apply()
-    }
-
-    private suspend fun generateCharacter(brief: String): Result<CharacterProfile> = withContext(Dispatchers.IO) {
-        runCatching {
-            val key = BuildConfig.GEMINI_API_KEY
-            check(key.isNotBlank()) { "API 키가 없습니다. GitHub Secrets에 GEMINI_API_KEY를 등록해 주세요." }
-            val prompt = """
-                사용자가 제공한 메모를 바탕으로 대화형 AI 캐릭터의 상세 프로필 초안을 작성해라.
-                출력은 반드시 JSON 객체 하나만 반환한다. 마크다운 코드블록이나 설명은 쓰지 않는다.
-                필드는 name, age, background, personality, appearance, speechStyle, relationship, intro, examples, extra 이다.
-                모든 등장인물은 성인으로 설정한다. 성인 캐릭터 사이의 성숙한 관계와 성인용 주제는 맥락에 맞게 다룰 수 있다. 입력에 없는 세부사항은 앞뒤가 맞도록 창작하되,
-                사용자가 명시한 사실이나 의도를 바꾸지 않는다. 각 필드는 구체적이고 대화 생성에 유용하게 작성한다.
-                examples에는 서로 다른 상황의 짧은 대사 예시를 3개 이상 넣는다.
-                사용자 메모:
-                $brief
-            """.trimIndent()
-            val payload = JSONObject().put("contents", JSONArray().put(JSONObject().put("parts",
-                JSONArray().put(JSONObject().put("text", prompt)))))
-                .put("generationConfig", JSONObject().put("temperature", 0.75).put("maxOutputTokens", 3500)
-                    .put("responseMimeType", "application/json"))
-            val request = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$key")
-                .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-                .build()
-            val raw = http.newCall(request).execute().use { response ->
-                val body = response.body?.string().orEmpty()
-                check(response.isSuccessful) { "Gemini 오류 ${response.code}: ${body.take(300)}" }
-                JSONObject(body).getJSONArray("candidates").getJSONObject(0)
-                    .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
-            }
-            val clean = raw.trim().substringAfter("{").let { "{" + it.substringBeforeLast("}") + "}" }
-            val obj = JSONObject(clean)
-            CharacterProfile(
-                name = obj.optString("name"), age = obj.optString("age"),
-                background = obj.optString("background"), personality = obj.optString("personality"),
-                appearance = obj.optString("appearance"), speechStyle = obj.optString("speechStyle"),
-                relationship = obj.optString("relationship"), intro = obj.optString("intro"),
-                examples = obj.optString("examples"), extra = obj.optString("extra")
-            )
-        }
-    }
-
-    private suspend fun generateStudio(kind: String, brief: String): Result<String> = withContext(Dispatchers.IO) {
-        runCatching {
-            val key = BuildConfig.GEMINI_API_KEY
-            check(key.isNotBlank()) { "API 키가 없습니다. GEMINI_API_KEY를 확인해 주세요." }
-            val task = when (kind) {
-                "프롬프트" -> "플롯의 제목과 세계관 및 상황 설명을 작성해라."
-                "설정집" -> "설정집 항목 하나를 작성해라. 첫 줄 제목, 둘째 줄 키워드 목록, 이후 본문을 작성해라."
-                "스타일" -> "대화에 적용할 구체적인 문체와 연출 지침을 작성해라."
-                "인트로" -> "첫 상황과 캐릭터의 첫 대사를 포함한 인트로를 작성해라."
-                "소개" -> "작품의 짧은 소개와 해시태그를 작성해라."
-                else -> "플롯에 어울리는 이벤트와 상호작용 아이디어를 작성해라."
-            }
-            val prompt = "너는 ZETA 플롯 제작 AI다. 모든 등장인물은 성인이다. 성인 캐릭터 사이의 성숙한 관계와 성인용 주제를 위한 설정을 맥락에 맞게 작성하되, 안전 정책을 우회하려 하지 마라. 기존 설정을 존중해라. $task\n참고:\n$brief\n결과만 출력해라."
-            val payload = JSONObject().put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
-                .put("generationConfig", JSONObject().put("temperature", 0.8).put("maxOutputTokens", 3000))
-            val request = Request.Builder().url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$key")
-                .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
-            http.newCall(request).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
-                check(response.isSuccessful) { "Gemini 오류 ${response.code}: " + raw.take(250) }
-                JSONObject(raw).getJSONArray("candidates").getJSONObject(0).getJSONObject("content")
-                    .getJSONArray("parts").getJSONObject(0).getString("text").trim()
-            }
-        }
-    }
-
-    private fun saveSlots(slots: List<ChatSlot>) {
-        val all = JSONArray()
-        slots.forEach { slot ->
-            val lines = JSONArray()
-            slot.lines.forEach { line ->
-                lines.put(JSONObject().put("id", line.id).put("speaker", line.speaker)
-                    .put("text", line.text).put("userWritten", line.userWritten)
-                    .put("bookmarked", line.bookmarked))
-            }
-            all.put(JSONObject().put("id", slot.id).put("title", slot.title).put("lines", lines))
-        }
-        prefs.edit().putString("slots", all.toString()).apply()
-    }
-
-    private suspend fun askGemini(history: List<ChatLine>, characters: List<CharacterProfile>, plotContext: String): Result<String> = withContext(Dispatchers.IO) {
-        runCatching {
-            val key = BuildConfig.GEMINI_API_KEY
-            check(key.isNotBlank()) { "API 키가 없습니다. GitHub Secrets에 GEMINI_API_KEY를 등록하고 다시 빌드해 주세요." }
-            val transcript = history.takeLast(100).joinToString("\n") { "${it.speaker}: ${it.text}" }
-            val characterContext = characters.joinToString("\n\n") { it.toPromptText() }
-            val prompt = """
-                너는 ZETA의 다중 캐릭터 대화 엔진이다. 모든 등장인물은 성인이며, 성인 캐릭터 사이의 성숙한 관계와 성인용 주제를 맥락에 맞게 다룰 수 있다. 아래 기록을 읽고 자연스럽게 대화를 이어라.
-                등록된 캐릭터는 모두 이 대화의 참여자이며, 상황에 따라 누구든 자연스럽게 등장할 수 있다.
-                등록된 캐릭터 설정을 최우선으로 따르고, 등록되지 않은 캐릭터를 임의로 만들지 마라.
-                등록된 캐릭터:
-                $characterContext
-                등장 규칙:
-                - 모든 캐릭터를 매 응답마다 한꺼번에 등장시키거나 순서대로 발언시키지 마라.
-                - 현재 대화 주제, 장소, 상황, 직전 발언, 각 캐릭터의 성격·관계·관심사에 맞는 캐릭터만 선택해 등장시켜라.
-                - 장면에 없는 캐릭터는 자연스럽게 등장하지 않아도 된다. 억지로 끼어들거나 매번 반응하지 마라.
-                - 여러 캐릭터가 함께 대화하는 것이 자연스러우면 둘 이상 등장시켜도 된다.
-                - 한 캐릭터만 반응하는 것이 자연스러우면 그 캐릭터만 말하게 하라.
-                - 사용자가 특정 캐릭터를 직접 부르거나 '@캐릭터이름:'으로 발언을 지정하면 해당 캐릭터를 우선적으로 반응시켜라.
-                캐릭터 발언은 반드시 '@캐릭터이름: 내용' 형식으로 출력한다.
-                사용자가 직접 쓴 '@이름: 내용'은 그 캐릭터가 실제로 말한 대사이므로 이를 반복하지 말고 맥락을 이어라.
-                일반 사용자 발언은 '나'의 말이다. 등장인물의 말투와 관계를 유지하라.
-                행동 묘사는 *행동 묘사* 형식을 쓸 수 있다.
-                플롯 설정과 설정집은 이 대화의 세계관·사건·문체에 적용한다. 설정이 서로 충돌하면 사용자가 직접 입력한 최신 설정을 우선한다.
-                플롯 설정:
-                $plotContext
-                출력은 이어지는 캐릭터 발언만 작성하라. 등록된 캐릭터 중 누가 등장할지는 상황에 맞춰 자율적으로 판단하라.
-                대화 기록:
-                $transcript
-            """.trimIndent()
-            val payload = JSONObject().put("contents",
-                JSONArray().put(JSONObject().put("parts",
-                    JSONArray().put(JSONObject().put("text", prompt)))))
-                .put("generationConfig", JSONObject().put("temperature", 0.9).put("maxOutputTokens", 2048))
-            val request = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$key")
-                .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-                .build()
-            http.newCall(request).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
-                check(response.isSuccessful) {
-                    val detail = try { JSONObject(raw).getJSONObject("error").optString("message") }
-                    catch (_: Exception) { raw.take(240) }
-                    "Gemini 오류 ${response.code}: $detail"
-                }
-                JSONObject(raw).getJSONArray("candidates").getJSONObject(0)
-                    .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
-            }
-        }
+        setContent { MaterialTheme(colorScheme = darkColorScheme(primary = Accent, background = Bg, surface = Panel)) { ZetaApp() } }
     }
 }
 
 @Composable
-private fun ZetaTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = darkColorScheme(
-        primary = Color(0xFF9DBBFF), secondary = Color(0xFFB9A6FF),
-        background = Color(0xFF101116), surface = Color(0xFF1A1C24)
-    ), content = content)
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ZetaScreen(
-    initialSlots: MutableList<ChatSlot>,
-    initialCharacters: List<CharacterProfile>,
-    apiReady: Boolean,
-    onSave: (List<ChatSlot>) -> Unit,
-    onSaveCharacters: (List<CharacterProfile>) -> Unit,
-    onSend: suspend (List<ChatLine>, List<CharacterProfile>, String) -> Result<String>,
-    onGenerateCharacter: suspend (String) -> Result<CharacterProfile>,
-    onGenerateStudio: suspend (String, String) -> Result<String>
-) {
-    val slots = remember { mutableStateListOf<ChatSlot>().apply { addAll(initialSlots) } }
-    val characters = remember { mutableStateListOf<CharacterProfile>().apply { addAll(initialCharacters) } }
-    var screen by remember { mutableStateOf("home") }
-    var tab by remember { mutableStateOf("프롬프트") }
-    var selected by remember { mutableIntStateOf(0) }
-    var input by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf(if (apiReady) "Gemini 연결 준비됨" else "API 키 미설정 · GitHub Secret 필요") }
-    var menu by remember { mutableStateOf(false) }
-    val appContext = androidx.compose.ui.platform.LocalContext.current
-    val plotPrefs = remember { appContext.getSharedPreferences("zeta_store", android.content.Context.MODE_PRIVATE) }
-    var plotTitle by remember { mutableStateOf(plotPrefs.getString("plot_title", "") ?: "") }
-    var plotDescription by remember { mutableStateOf(plotPrefs.getString("plot_description", "") ?: "") }
-    var loreEntries by remember { mutableStateOf(runCatching {
-        val arr = JSONArray(plotPrefs.getString("plot_lore", "[]"))
-        List(arr.length()) { i -> val item = arr.getJSONArray(i); item.getString(0) to item.getString(1) }
-    }.getOrDefault(emptyList())) }
-    var styleValues by remember { mutableStateOf(runCatching {
-        val obj = JSONObject(plotPrefs.getString("plot_style", "{}"))
-        obj.keys().asSequence().associateWith { obj.optString(it) }.ifEmpty {
-            mapOf("난이도" to "보통", "전개 속도" to "자연스러운", "시점" to "3인칭", "시제" to "현재", "응답 길이" to "자동", "표현 방식" to "기본")
-        }
-    }.getOrDefault(mapOf("난이도" to "보통", "전개 속도" to "자연스러운", "시점" to "3인칭", "시제" to "현재", "응답 길이" to "자동", "표현 방식" to "기본"))) }
-    var intro by remember { mutableStateOf(plotPrefs.getString("plot_intro", "") ?: "") }
-    var plotSaved by remember { mutableStateOf(false) }
-    var studioBusy by remember { mutableStateOf(false) }
-    var studioMessage by remember { mutableStateOf("") }
-    var pluginFlags by remember { mutableStateOf(runCatching {
-        val obj = JSONObject(plotPrefs.getString("plot_plugins", "{}"))
-        obj.keys().asSequence().associateWith { obj.optBoolean(it) }
-    }.getOrDefault(emptyMap())) }
-    val plotContext = buildString {
-        appendLine("플롯 제목: $plotTitle")
-        appendLine("플롯 설명: $plotDescription")
-        appendLine("인트로: $intro")
-        appendLine("스타일 지침: $styleValues")
-        appendLine("활성화된 플롯 기능: " + pluginFlags.filterValues { it }.keys.joinToString(", "))
-        loreEntries.forEach { (title, body) -> appendLine("설정집 [$title]: $body") }
-    }
+private fun ZetaApp() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("zeta_local", 0) }
     val scope = rememberCoroutineScope()
-    val slot = slots.getOrNull(selected) ?: slots.first()
-
-    fun persist() = onSave(slots.toList())
-    fun send() {
-        val typed = input.trim()
-        if (typed.isEmpty() || busy) return
-        input = ""
-        parseRoleLines(typed).forEach { slot.lines.add(it) }
-        if (slot.title == "새 대화") slot.title = typed.take(24)
-        persist()
-        busy = true
-        status = "캐릭터가 생각하는 중..."
-        scope.launch {
-            val result = onSend(slot.lines.toList(), characters.toList(), plotContext)
-            result.onSuccess { answer ->
-                parseRoleLines(answer, defaultSpeaker = characters.firstOrNull()?.name ?: "캐릭터")
-                    .forEach { slot.lines.add(it.copy(userWritten = false)) }
-                status = "응답 완료"
-            }.onFailure { status = it.message ?: "응답 실패" }
-            busy = false
-            persist()
-        }
-    }
-
-    when (screen) {
-        "characters" -> CharacterManagerScreen(
-            initialCharacters = characters.toList(),
-            onBack = { screen = "plot" },
-            onSave = { updated -> characters.clear(); characters.addAll(updated); onSaveCharacters(updated) },
-            onGenerate = onGenerateCharacter
-        )
-        "plot" -> PlotStudioScreen(
-            title = plotTitle, onTitle = { plotTitle = it },
-            description = plotDescription, onDescription = { plotDescription = it },
-            tab = tab, onTab = { tab = it },
-            characters = characters,
-            onCharacters = { screen = "characters" },
-            loreEntries = loreEntries, onLoreEntries = { loreEntries = it },
-            styleValues = styleValues, onStyleValues = { styleValues = it },
-            intro = intro, onIntro = { intro = it },
-            saved = plotSaved, onSavePlot = {
-                plotPrefs.edit().putString("plot_title", plotTitle).putString("plot_description", plotDescription)
-                    .putString("plot_intro", intro)
-                    .putString("plot_lore", JSONArray().apply { loreEntries.forEach { put(JSONArray().put(it.first).put(it.second)) } }.toString())
-                    .putString("plot_style", JSONObject(styleValues).toString())
-                    .putString("plot_plugins", JSONObject().apply { pluginFlags.forEach { (k,v) -> put(k,v) } }.toString()).apply()
-                plotSaved = true; status = "플롯 설정을 저장했어."
-            },
-            onGenerateStudio = { kind ->
-                if (!studioBusy) {
-                    studioBusy = true; studioMessage = "AI가 작성 중..."
-                    scope.launch {
-                        val brief = "제목: $plotTitle\n설명: $plotDescription\n캐릭터: ${characters.joinToString { it.toPromptText() }}\n설정집: ${loreEntries.joinToString("\n") { it.first + ": " + it.second }}\n스타일: $styleValues\n인트로: $intro"
-                        onGenerateStudio(kind, brief).onSuccess { result ->
-                            when (kind) {
-                                "프롬프트" -> { if (plotTitle.isBlank()) plotTitle = result.lineSequence().firstOrNull()?.take(60) ?: "새 플롯"; plotDescription = result }
-                                "설정집" -> { val title = result.lineSequence().firstOrNull()?.removePrefix("제목:")?.trim().orEmpty().ifBlank { "새 설정" }; loreEntries = loreEntries + (title to result) }
-                                "스타일" -> styleValues = styleValues + ("AI 추가 지침" to result)
-                                "인트로" -> intro = result
-                                else -> plotDescription = (plotDescription + "\n\n" + result).trim()
-                            }
-                            studioMessage = "AI 초안을 입력했어. 확인 후 저장해 줘."; plotSaved = false
-                        }.onFailure { studioMessage = it.message ?: "AI 작성 실패" }
-                        studioBusy = false
+    val personas = remember {
+        mutableStateListOf<Persona>().apply {
+            val saved = prefs.getString("personas", null)
+            if (saved.isNullOrBlank()) {
+                add(Persona("default", "하나", "다정하고 장난기 있는 대화 상대", "친근하고 자연스럽게 말한다. 상대의 말에 적극적으로 반응하고 대화를 이어간다.", "안녕! 오늘은 어떤 이야기를 해볼까?"))
+            } else {
+                runCatching {
+                    val arr = JSONArray(saved)
+                    for (i in 0 until arr.length()) {
+                        val o = arr.getJSONObject(i)
+                        add(Persona(o.optString("id"), o.optString("name"), o.optString("tagline"), o.optString("personality"), o.optString("greeting")))
                     }
                 }
-            },
-            studioBusy = studioBusy, studioMessage = studioMessage,
-            pluginFlags = pluginFlags, onPluginToggle = { name, enabled -> pluginFlags = pluginFlags + (name to enabled); plotSaved = false },
-            onBack = { screen = "home" }
-        )
-        "chat" -> ChatStudioScreen(
-            slot = slot, slots = slots, selected = selected,
-            onSelect = { selected = it }, input = input, onInput = { input = it },
-            busy = busy, status = status, onSend = { send() },
-            onBack = { screen = "home" }, onNew = {
-                if (slots.size < 100) { slots.add(ChatSlot()); selected = slots.lastIndex; persist() }
-                else status = "대화 슬롯은 최대 100개입니다."
-            }, onBookmark = { line ->
-                val index = slot.lines.indexOfFirst { it.id == line.id }
-                if (index >= 0) { slot.lines[index] = slot.lines[index].copy(bookmarked = !line.bookmarked); persist() }
             }
-        )
-        else -> HomeStudioScreen(
-            plotTitle = plotTitle,
-            characterCount = characters.size,
-            chatCount = slots.size,
-            onOpenPlot = { screen = "plot" },
-            onOpenChat = { screen = "chat" },
-            onOpenCharacters = { screen = "characters" },
-            onNewChat = {
-                if (slots.size < 100) { slots.add(ChatSlot()); selected = slots.lastIndex; screen = "chat"; persist() }
-                else status = "대화 슬롯은 최대 100개입니다."
-            }
-        )
+        }
     }
-}
+    val messages = remember {
+        mutableStateListOf<ChatLine>().apply {
+            val saved = prefs.getString("messages", null)
+            if (!saved.isNullOrBlank()) runCatching {
+                val arr = JSONArray(saved)
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    add(ChatLine(o.optString("speaker"), o.optString("body"), o.optBoolean("character")))
+                }
+            }
+        }
+    }
+    var currentPersona by remember { mutableStateOf(personas.firstOrNull()?.id ?: "") }
+    var page by remember { mutableStateOf("home") }
+    var draft by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var showPersonaEditor by remember { mutableStateOf(false) }
+    var editingPersona by remember { mutableStateOf<Persona?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
+    var apiKey by remember { mutableStateOf(prefs.getString("api_key", "") ?: "") }
+    var selectedForChat by remember { mutableStateOf(personas.map { it.id }.toSet()) }
 
-private fun parseRoleLines(raw: String, defaultSpeaker: String = "나"): List<ChatLine> {
-    val result = mutableListOf<ChatLine>()
-    raw.lines().forEach { source ->
-        val line = source.trim()
-        if (line.isBlank()) return@forEach
-        val match = Regex("^@([^:：]+)[:：]\\s*(.*)$").matchEntire(line)
-        if (match != null) {
-            result.add(ChatLine(speaker = match.groupValues[1].trim(),
-                text = match.groupValues[2].trim(), userWritten = true))
-        } else result.add(ChatLine(speaker = defaultSpeaker, text = line, userWritten = defaultSpeaker == "나"))
+    fun persist() {
+        val p = JSONArray()
+        personas.forEach { x -> p.put(JSONObject().put("id", x.id).put("name", x.name).put("tagline", x.tagline).put("personality", x.personality).put("greeting", x.greeting)) }
+        val m = JSONArray()
+        messages.forEach { x -> m.put(JSONObject().put("speaker", x.speaker).put("body", x.body).put("character", x.fromCharacter)) }
+        prefs.edit().putString("personas", p.toString()).putString("messages", m.toString()).apply()
     }
-    return result
+
+    fun sendMessage(raw: String) {
+        val text = raw.trim()
+        if (text.isEmpty() || busy) return
+        val directed = Regex("^@([^:：]+)[:：]\\s*(.*)$", RegexOption.DOT_MATCHES_ALL).find(text)
+        val targetName = directed?.groupValues?.get(1)?.trim()
+        val target = personas.firstOrNull { it.name.equals(targetName, true) }
+        val actualText = directed?.groupValues?.get(2)?.trim().orEmpty().ifBlank { text }
+        val speaker = if (target != null) target.name else "나"
+        messages.add(ChatLine(speaker, actualText, target != null))
+        draft = ""
+        persist()
+        busy = true
+        error = ""
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                askZeta(apiKey.ifBlank { BuildConfig.GEMINI_API_KEY }, personas.filter { selectedForChat.contains(it.id) }, messages.toList(), target?.name)
+            }
+            if (result.isSuccess) {
+                messages.add(ChatLine(result.getOrNull()?.first ?: (target?.name ?: personas.firstOrNull()?.name ?: "ZETA"), result.getOrNull()?.second ?: "", true))
+                persist()
+            } else {
+                error = result.exceptionOrNull()?.message ?: "응답을 가져오지 못했어요."
+            }
+            busy = false
+        }
+    }
+
+    Surface(modifier = Modifier.fillMaxSize(), color = Bg) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (page == "chat") {
+                    IconButton(onClick = { page = "home" }) { Icon(Icons.Default.ArrowBack, null, tint = MainText) }
+                } else {
+                    Text("ZETA", color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                }
+                Spacer(Modifier.weight(1f))
+                if (page == "home") {
+                    IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, "설정", tint = Muted) }
+                } else {
+                    Text("개인 채팅", color = Muted, fontSize = 12.sp)
+                }
+            }
+
+            if (page == "home") {
+                Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 18.dp)) {
+                    Text("나만의 캐릭터", color = MainText, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text("원하는 캐릭터를 만들고 자유롭게 대화해 보세요.", color = Muted, fontSize = 14.sp)
+                    Spacer(Modifier.height(22.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("내 캐릭터", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = { editingPersona = null; showPersonaEditor = true }) {
+                            Icon(Icons.Default.Add, null, tint = Accent)
+                            Spacer(Modifier.width(4.dp))
+                            Text("캐릭터 만들기", color = Accent)
+                        }
+                    }
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.weight(1f)) {
+                        items(personas, key = { it.id }) { persona ->
+                            Row(
+                                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(18.dp)).clickable {
+                                    currentPersona = persona.id
+                                    selectedForChat = setOf(persona.id)
+                                    if (messages.isEmpty()) messages.add(ChatLine(persona.name, persona.greeting, true))
+                                    page = "chat"
+                                    persist()
+                                }.padding(15.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(54.dp).background(Accent.copy(alpha = .18f), CircleShape), contentAlignment = Alignment.Center) {
+                                    Text(persona.name.take(1), color = Accent, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(Modifier.width(13.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(persona.name, color = MainText, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text(persona.tagline.ifBlank { "나만의 AI 캐릭터" }, color = Muted, fontSize = 12.sp, maxLines = 2)
+                                }
+                                IconButton(onClick = { editingPersona = persona; showPersonaEditor = true }) { Icon(Icons.Default.Edit, "편집", tint = Muted) }
+                                Icon(Icons.Default.ChatBubbleOutline, null, tint = Accent)
+                            }
+                        }
+                        if (personas.isEmpty()) item { Text("아직 캐릭터가 없어요. 위 버튼으로 첫 캐릭터를 만들어 보세요.", color = Muted) }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(14.dp)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("대화 기록", color = MainText, fontWeight = FontWeight.SemiBold)
+                            Text(if (messages.isEmpty()) "저장된 대화가 없습니다" else "이 기기에 자동 저장된 대화 " + messages.size + "개", color = Muted, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { page = "chat" }) { Text("열기", color = Accent) }
+                        TextButton(onClick = { messages.clear(); persist() }) { Icon(Icons.Default.Delete, null, tint = Muted) }
+                    }
+                }
+            } else {
+                val active = personas.firstOrNull { it.id == currentPersona } ?: personas.firstOrNull()
+                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(38.dp).background(Accent.copy(alpha = .2f), CircleShape), contentAlignment = Alignment.Center) {
+                        Text(active?.name?.take(1) ?: "Z", color = Accent, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(active?.name ?: "ZETA", color = MainText, fontWeight = FontWeight.Bold)
+                        Text("AI 캐릭터와 대화 중", color = Muted, fontSize = 11.sp)
+                    }
+                    TextButton(onClick = { selectedForChat = personas.map { it.id }.toSet() }) { Text("모두 참여", color = Accent, fontSize = 12.sp) }
+                }
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp),
+                    reverseLayout = false,
+                    contentPadding = PaddingValues(vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(messages) { line ->
+                        val mine = !line.fromCharacter
+                        Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
+                            Text(line.speaker, color = if (mine) Muted else Accent, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                            Text(
+                                line.body,
+                                color = MainText,
+                                fontSize = 15.sp,
+                                lineHeight = 23.sp,
+                                modifier = Modifier.widthIn(max = 330.dp).background(if (mine) Color(0xFF393044) else Panel, RoundedCornerShape(17.dp)).padding(horizontal = 14.dp, vertical = 11.dp)
+                            )
+                        }
+                    }
+                    if (busy) item { Text("캐릭터가 생각하고 있어요…", color = Muted, fontSize = 13.sp) }
+                }
+                if (error.isNotBlank()) Text(error, color = Color(0xFFFF8B8B), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
+                Row(
+                    Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp)
+                        .background(Panel, RoundedCornerShape(24.dp)).padding(start = 16.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        modifier = Modifier.weight(1f).padding(vertical = 9.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 15.sp),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                        decorationBox = { inner ->
+                            if (draft.isEmpty()) Text("@캐릭터이름: 대사 또는 메시지 입력", color = Muted, fontSize = 13.sp)
+                            inner()
+                        }
+                    )
+                    IconButton(onClick = { sendMessage(draft) }, enabled = !busy && draft.isNotBlank()) {
+                        Icon(Icons.Default.Send, "전송", tint = if (busy || draft.isBlank()) Muted else Accent)
+                    }
+                }
+            }
+        }
+    }
+
+    if (showPersonaEditor) {
+        PersonaEditor(
+            initial = editingPersona,
+            onDismiss = { showPersonaEditor = false },
+            onSave = { p ->
+                val index = personas.indexOfFirst { it.id == p.id }
+                if (index >= 0) personas[index] = p else personas.add(p)
+                if (currentPersona.isBlank()) currentPersona = p.id
+                persist()
+                showPersonaEditor = false
+            }
+        )
+    }
+    if (showSettings) {
+        AlertDialog(
+            onDismissRequest = { showSettings = false },
+            containerColor = Panel,
+            title = { Text("설정", color = MainText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Gemini API 키", color = MainText, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    var keyDraft by remember { mutableStateOf(apiKey) }
+                    OutlinedTextField(value = keyDraft, onValueChange = { keyDraft = it }, singleLine = true, visualTransformation = PasswordVisualTransformation(), placeholder = { Text("GitHub Secret을 사용하려면 비워두세요") })
+                    Spacer(Modifier.height(8.dp))
+                    Text("모델: Gemini 2.5 Flash-Lite · 대화와 캐릭터는 기기에 저장됩니다.", color = Muted, fontSize = 12.sp)
+                    TextButton(onClick = { apiKey = keyDraft; prefs.edit().putString("api_key", apiKey).apply(); showSettings = false }) { Text("저장", color = Accent) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSettings = false }) { Text("닫기", color = Accent) } }
+        )
+    }
 }
 
 @Composable
-private fun ChatBubble(line: ChatLine, onBookmark: () -> Unit) {
-    val mine = line.speaker == "나"
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Top) {
-        if (!mine) {
-            Box(Modifier.size(34.dp).background(Color(0xFF4A5070), CircleShape),
-                contentAlignment = Alignment.Center) {
-                Text(line.speaker.take(1), color = Color.White, fontWeight = FontWeight.Bold)
+private fun PersonaEditor(initial: Persona?, onDismiss: () -> Unit, onSave: (Persona) -> Unit) {
+    var name by remember { mutableStateOf(initial?.name ?: "") }
+    var tagline by remember { mutableStateOf(initial?.tagline ?: "") }
+    var personality by remember { mutableStateOf(initial?.personality ?: "") }
+    var greeting by remember { mutableStateOf(initial?.greeting ?: "") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Panel,
+        title = { Text(if (initial == null) "캐릭터 만들기" else "캐릭터 편집", color = MainText, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(Modifier.heightIn(max = 520.dp)) {
+                EditorField("이름", name, { name = it })
+                EditorField("한 줄 소개", tagline, { tagline = it })
+                EditorField("성격과 말투", personality, { personality = it }, minLines = 3)
+                EditorField("첫 인사", greeting, { greeting = it }, minLines = 2)
             }
-            Spacer(Modifier.width(7.dp))
-        }
-        Column(Modifier.widthIn(max = 300.dp)) {
-            if (!mine) Text(line.speaker, color = Color(0xFFB8C7F0), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = if (mine) Color(0xFF365C91) else Color(0xFF252832),
-                    shape = RoundedCornerShape(15.dp)) {
-                    Text(line.text, color = Color.White, modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
-                        fontSize = 15.sp)
-                }
-                IconButton(onClick = onBookmark, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Bookmark, contentDescription = "책갈피",
-                        tint = if (line.bookmarked) Color(0xFFFFD36A) else Color.Gray.copy(alpha = 0.45f),
-                        modifier = Modifier.size(15.dp))
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (name.isNotBlank()) onSave(Persona(initial?.id ?: UUID.randomUUID().toString(), name.trim(), tagline.trim(), personality.trim(), greeting.trim().ifBlank { "안녕하세요!" }))
+            }) { Text("저장", color = Accent) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소", color = Muted) } }
+    )
+}
+
+@Composable
+private fun EditorField(label: String, value: String, onValue: (String) -> Unit, minLines: Int = 1) {
+    Text(label, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 7.dp, bottom = 3.dp))
+    OutlinedTextField(value = value, onValueChange = onValue, modifier = Modifier.fillMaxWidth(), minLines = minLines, textStyle = androidx.compose.ui.text.TextStyle(color = MainText, fontSize = 14.sp))
+}
+
+private fun askZeta(apiKey: String, personas: List<Persona>, history: List<ChatLine>, directedTo: String?): Result<Pair<String, String>> {
+    if (apiKey.isBlank()) return Result.failure(IllegalStateException("API 키가 없어요. 설정에서 Gemini API 키를 입력하거나 GitHub Secret GEMINI_API_KEY를 등록해 주세요."))
+    if (personas.isEmpty()) return Result.failure(IllegalStateException("먼저 캐릭터를 만들어 주세요."))
+    val characterPrompt = personas.joinToString("\n\n") {
+        "이름: " + it.name + "\n소개: " + it.tagline + "\n성격/말투: " + it.personality
+    }
+    val system = """너는 개인용 AI 캐릭터 롤플레이 앱의 대화 엔진이다.
+다음 캐릭터 설정을 정확히 연기한다.
+$characterPrompt
+
+규칙:
+- 사용자의 말에 자연스럽고 몰입감 있게 반응하며 단답만 하지 말고 상황과 감정을 풍부하게 표현한다.
+- 캐릭터의 대사와 *행동 묘사*를 함께 사용할 수 있다. 행동 묘사는 별표 한 쌍으로 감싼다.
+- 사용자가 @캐릭터이름: 내용 형식으로 입력하면 해당 캐릭터가 말하거나 행동한 것으로 취급하고, 그 상황을 이어서 반응한다.
+- 여러 캐릭터가 참여할 때는 각 발화를 '캐릭터이름: 대사' 형식으로 구분한다. 한 명만 답할 때는 이름 접두사를 생략해도 된다.
+- 설정에 없는 과거 사실을 임의로 확정하지 말고 대화 맥락을 유지한다.
+- 모든 등장인물은 명시적으로 성인(만 18세 이상)인 허구의 인물로만 다룬다. 미성년자 성적 상황은 만들지 않는다.
+- 공개 커뮤니티나 랭킹을 언급하지 않는다.
+"""
+    val contents = JSONArray()
+    history.takeLast(40).forEach { line ->
+        val role = if (line.fromCharacter) "model" else "user"
+        val label = if (line.fromCharacter) line.speaker + ": " else ""
+        contents.put(JSONObject().put("role", role).put("parts", JSONArray().put(JSONObject().put("text", label + line.body))))
+    }
+    val body = JSONObject()
+        .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+        .put("contents", contents)
+        .put("generationConfig", JSONObject().put("temperature", 0.95).put("topP", 0.95).put("maxOutputTokens", 1800))
+    val client = OkHttpClient.Builder().connectTimeout(25, TimeUnit.SECONDS).readTimeout(75, TimeUnit.SECONDS).writeTimeout(30, TimeUnit.SECONDS).build()
+    val media = "application/json; charset=utf-8".toMediaType()
+    var lastError = "요청 실패"
+    for (attempt in 0..3) {
+        try {
+            val request = Request.Builder()
+                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=" + apiKey)
+                .post(body.toString().toRequestBody(media))
+                .build()
+            client.newCall(request).execute().use { response ->
+                val responseText = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    lastError = try { JSONObject(responseText).optJSONObject("error")?.optString("message") ?: "HTTP " + response.code } catch (_: Exception) { "HTTP " + response.code }
+                    if ((response.code == 429 || response.code == 503 || response.code >= 500) && attempt < 3) {
+                        Thread.sleep(longArrayOf(1000, 2000, 4000)[attempt])
+                    } else return Result.failure(IllegalStateException(lastError))
+                } else {
+                    val root = JSONObject(responseText)
+                    val text = root.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)?.optString("text").orEmpty()
+                    if (text.isBlank()) return Result.failure(IllegalStateException("AI 응답이 비어 있어요. 다시 시도해 주세요."))
+                    val match = Regex("^([^:\\n]{1,24}):\\s*([\\s\\S]+)$").find(text.trim())
+                    return Result.success(if (match != null && personas.any { it.name == match.groupValues[1].trim() }) match.groupValues[1].trim() to match.groupValues[2].trim() else (directedTo ?: personas.first().name) to text.trim())
                 }
             }
+        } catch (e: Exception) {
+            lastError = e.message ?: "네트워크 오류"
+            if (attempt < 3) Thread.sleep(longArrayOf(1000, 2000, 4000)[attempt]) else return Result.failure(IllegalStateException(lastError))
         }
     }
+    return Result.failure(IllegalStateException(lastError))
 }

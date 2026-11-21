@@ -1,15 +1,12 @@
-# ZETA
-Android용 다중 캐릭터 AI 채팅 앱.
+# ZETA — Personal Character Chat
 
-## 빌드
-1. Settings → Secrets and variables → Actions → New repository secret에서 `GEMINI_API_KEY`를 등록합니다.
-2. Actions → Android APK 실행 후 성공한 실행의 Artifacts에서 `ZETA-debug-apk`를 받습니다.
-3. API 키는 개인 테스트용입니다. APK에 포함된 키는 추출할 수 있으므로 공개 배포에는 서버 프록시가 필요합니다.
+A private, local-first Android character chat app inspired by ZETA-style interfaces.
 
-## 현재 구현
-- Kotlin / Jetpack Compose Android 앱
-- 카카오톡 형태의 말풍선 UI
-- `@캐릭터이름: 내용` 역할 지정 입력 및 AI 대화 맥락 반영
-- 최대 100개 대화 슬롯, 자동 저장
-- 메시지 책갈피
-- Gemini 2.5 Flash-Lite 연결
+## Build
+Push to main or run the Android APK workflow manually. Download the **ZETA-APK** artifact.
+
+## Gemini
+Add a GitHub Actions repository secret named `GEMINI_API_KEY`. The app also includes a local API-key setting as a fallback.
+Model: `gemini-2.5-flash-lite`.
+
+Chats and character profiles are stored locally on the device. No public feed, rankings, comments, coins, or paid features are included.
