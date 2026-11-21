@@ -255,14 +255,28 @@ private fun ZetaScreen(
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf(if (apiReady) "Gemini 연결 준비됨" else "API 키 미설정 · GitHub Secret 필요") }
     var menu by remember { mutableStateOf(false) }
-    var plotTitle by remember { mutableStateOf("") }
-    var plotDescription by remember { mutableStateOf("") }
-    var loreEntries by remember { mutableStateOf(listOf<Pair<String,String>>()) }
-    var styleValues by remember { mutableStateOf(mapOf("난이도" to "보통", "전개 속도" to "자연스러운", "시점" to "3인칭", "시제" to "현재", "응답 길이" to "자동", "표현 방식" to "기본")) }
-    var intro by remember { mutableStateOf("") }
+    val appContext = androidx.compose.ui.platform.LocalContext.current
+    val plotPrefs = remember { appContext.getSharedPreferences("zeta_store", MODE_PRIVATE) }
+    var plotTitle by remember { mutableStateOf(plotPrefs.getString("plot_title", "") ?: "") }
+    var plotDescription by remember { mutableStateOf(plotPrefs.getString("plot_description", "") ?: "") }
+    var loreEntries by remember { mutableStateOf(runCatching {
+        val arr = JSONArray(plotPrefs.getString("plot_lore", "[]"))
+        List(arr.length()) { i -> val item = arr.getJSONArray(i); item.getString(0) to item.getString(1) }
+    }.getOrDefault(emptyList())) }
+    var styleValues by remember { mutableStateOf(runCatching {
+        val obj = JSONObject(plotPrefs.getString("plot_style", "{}"))
+        obj.keys().asSequence().associateWith { obj.optString(it) }.ifEmpty {
+            mapOf("난이도" to "보통", "전개 속도" to "자연스러운", "시점" to "3인칭", "시제" to "현재", "응답 길이" to "자동", "표현 방식" to "기본")
+        }
+    }.getOrDefault(mapOf("난이도" to "보통", "전개 속도" to "자연스러운", "시점" to "3인칭", "시제" to "현재", "응답 길이" to "자동", "표현 방식" to "기본"))) }
+    var intro by remember { mutableStateOf(plotPrefs.getString("plot_intro", "") ?: "") }
     var plotSaved by remember { mutableStateOf(false) }
     var studioBusy by remember { mutableStateOf(false) }
     var studioMessage by remember { mutableStateOf("") }
+    var pluginFlags by remember { mutableStateOf(runCatching {
+        val obj = JSONObject(plotPrefs.getString("plot_plugins", "{}"))
+        obj.keys().asSequence().associateWith { obj.optBoolean(it) }
+    }.getOrDefault(emptyMap())) }
     val plotContext = buildString {
         appendLine("플롯 제목: $plotTitle")
         appendLine("플롯 설명: $plotDescription")
@@ -312,10 +326,11 @@ private fun ZetaScreen(
             styleValues = styleValues, onStyleValues = { styleValues = it },
             intro = intro, onIntro = { intro = it },
             saved = plotSaved, onSavePlot = {
-                prefs.edit().putString("plot_title", plotTitle).putString("plot_description", plotDescription)
+                plotPrefs.edit().putString("plot_title", plotTitle).putString("plot_description", plotDescription)
                     .putString("plot_intro", intro)
                     .putString("plot_lore", JSONArray().apply { loreEntries.forEach { put(JSONArray().put(it.first).put(it.second)) } }.toString())
-                    .putString("plot_style", JSONObject(styleValues).toString()).apply()
+                    .putString("plot_style", JSONObject(styleValues).toString())
+                    .putString("plot_plugins", JSONObject().apply { pluginFlags.forEach { (k,v) -> put(k,v) } }.toString()).apply()
                 plotSaved = true; status = "플롯 설정을 저장했어."
             },
             onGenerateStudio = { kind ->
