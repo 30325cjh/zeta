@@ -190,13 +190,7 @@ class MainActivity : Activity() {
             var skipped = 0
             tracks.forEachIndexed { index, item ->
                 try {
-                    val match = findLicensedArchiveTrack((item.title + " " + item.artist).trim())
-                    if (match == null) {
-                        skipped++
-                    } else {
-                        saveArchiveTrack(match)
-                        saved++
-                    }
+                    if (findAndSaveLicensedArchiveTrack((item.title + " " + item.artist).trim())) saved++ else skipped++
                 } catch (_: Exception) { skipped++ }
                 val done = index + 1
                 runOnUiThread { playlistStatus.text = "일괄 처리 중… " + done + "/" + tracks.size + " · 저장 " + saved + " · 제외 " + skipped }
@@ -208,10 +202,10 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun findLicensedArchiveTrack(q: String): Track? {
+    private fun findAndSaveLicensedArchiveTrack(q: String): Boolean {
         val e = URLEncoder.encode(q, "UTF-8")
         val url = "https://archive.org/advancedsearch.php?q=" + e +
-            "%20AND%20mediatype%3Aaudio&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=licenseurl&rows=10&page=1&output=json"
+            "%20AND%20mediatype%3Aaudio&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=licenseurl&rows=15&page=1&output=json"
         val body = http.newCall(Request.Builder().url(url).build()).execute().use { it.body?.string() ?: error("검색 응답 없음") }
         val docs = JSONObject(body).getJSONObject("response").getJSONArray("docs")
         for (i in 0 until docs.length()) {
@@ -221,9 +215,16 @@ class MainActivity : Activity() {
                 license.contains("creativecommons.org/licenses/by/", true) ||
                 license.contains("creativecommons.org/licenses/by-sa/", true) ||
                 license.contains("creativecommons.org/licenses/zero/", true)
-            if (allowed) return Track(d.optString("title", q), d.optString("creator", ""), d.optString("identifier"), license)
+            if (!allowed) continue
+            val candidate = Track(d.optString("title", q), d.optString("creator", ""), d.optString("identifier"), license)
+            try {
+                saveArchiveTrack(candidate)
+                return true
+            } catch (_: Exception) {
+                // Try the next licensed result if this item has no downloadable MP3.
+            }
         }
-        return null
+        return false
     }
 
     private fun saveArchiveTrack(t: Track) {
