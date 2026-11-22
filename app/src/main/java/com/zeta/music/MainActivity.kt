@@ -3,6 +3,7 @@ package com.zeta.music
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -133,13 +134,14 @@ class MainActivity : Activity() {
                 val fileName = f.getString("name")
                 val encodedName = fileName.split("/").joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
                 val url = "https://archive.org/download/" + t.id + "/" + encodedName
-                val bytes = http.newCall(Request.Builder().url(url).build()).execute().use { r ->
-                    if (!r.isSuccessful) error("HTTP " + r.code)
-                    r.body?.bytes() ?: error("파일이 비어 있습니다.")
-                }
                 val safe = t.title.replace(Regex("[^가-힣a-zA-Z0-9._ -]"), "_").take(65).ifBlank { "audio" }
                 val out = File(getExternalFilesDir("Music") ?: filesDir, safe + "_" + System.currentTimeMillis() + ".mp3")
-                out.writeBytes(bytes)
+                http.newCall(Request.Builder().url(url).build()).execute().use { r ->
+                    if (!r.isSuccessful) error("HTTP " + r.code)
+                    val body = r.body ?: error("파일이 비어 있습니다.")
+                    if (body.contentLength() > 300L * 1024L * 1024L) error("파일이 너무 큽니다.")
+                    body.byteStream().use { input -> out.outputStream().use { output -> input.copyTo(output) } }
+                }
                 getSharedPreferences("library", MODE_PRIVATE).edit().putString(out.absolutePath, t.title).apply()
                 runOnUiThread { button.text = "저장 완료"; button.isEnabled = true; status.text = "저장 완료: " + t.title; renderLibrary() }
             } catch (e: Exception) {
@@ -158,16 +160,25 @@ class MainActivity : Activity() {
         Thread {
             uris.forEachIndexed { index, uri ->
                 try {
-                    val out = File(getExternalFilesDir("Music") ?: filesDir, "import_" + System.currentTimeMillis() + "_" + index + ".audio")
+                    val originalName = displayName(uri)
+                    val ext = originalName.substringAfterLast('.', "audio").lowercase().replace(Regex("[^a-z0-9]"), "").take(8).ifBlank { "audio" }
+                    val safeName = originalName.substringBeforeLast('.', originalName).replace(Regex("[^가-힣a-zA-Z0-9._ -]"), "_").take(55).ifBlank { "import" }
+                    val out = File(getExternalFilesDir("Music") ?: filesDir, safeName + "_" + System.currentTimeMillis() + "_" + index + "." + ext)
                     contentResolver.openInputStream(uri)?.use { input -> out.outputStream().use { output -> input.copyTo(output) } }
-                    getSharedPreferences("library", MODE_PRIVATE).edit().putString(out.absolutePath, displayName(uri)).apply()
+                    getSharedPreferences("library", MODE_PRIVATE).edit().putString(out.absolutePath, originalName).apply()
                 } catch (_: Exception) {}
             }
             runOnUiThread { renderLibrary(); status.text = uris.size.toString() + "개 파일을 추가했습니다." }
         }.start()
     }
 
-    private fun displayName(uri: Uri): String = uri.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.') ?: "가져온 음악"
+    private fun displayName(uri: Uri): String {
+        return try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) ?: "가져온 음악" else "가져온 음악"
+            } ?: "가져온 음악"
+        } catch (_: Exception) { "가져온 음악" }
+    }
 
     private fun renderLibrary() {
         if (!::library.isInitialized) return
