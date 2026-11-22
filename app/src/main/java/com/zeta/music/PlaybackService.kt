@@ -10,6 +10,7 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import java.io.File
 
@@ -53,6 +54,7 @@ class PlaybackService : Service() {
         val file = File(path)
         if (!file.exists()) { stopSelf(); return }
         player = MediaPlayer().apply {
+            setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
             setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
             setDataSource(file.absolutePath)
