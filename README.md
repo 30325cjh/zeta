@@ -1,4 +1,4 @@
-# Zeta Music
+# zeta
 
 Private Android offline audio player.
 
