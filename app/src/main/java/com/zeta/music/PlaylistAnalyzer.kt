@@ -49,6 +49,14 @@ object PlaylistAnalyzer {
         val root = JSONObject(responseText)
         val candidate = root.optJSONArray("candidates")?.optJSONObject(0)
             ?: error("Gemini가 플레이리스트 분석 결과를 반환하지 않았습니다.")
+        val urlMetadata = candidate.optJSONObject("urlContextMetadata")?.optJSONArray("urlMetadata")
+        var retrieved = false
+        if (urlMetadata != null) {
+            for (i in 0 until urlMetadata.length()) {
+                if (urlMetadata.optJSONObject(i)?.optString("urlRetrievalStatus") == "URL_RETRIEVAL_STATUS_SUCCESS") retrieved = true
+            }
+        }
+        if (!retrieved) error("Gemini가 플레이리스트 페이지를 읽지 못했습니다. 공개 플레이리스트인지 확인하세요.")
         val parts = candidate.optJSONObject("content")?.optJSONArray("parts")
             ?: error("Gemini 응답 형식이 올바르지 않습니다.")
         val text = buildString {
