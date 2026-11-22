@@ -7,6 +7,8 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.*
+import androidx.core.content.ContextCompat
+import android.app.AlertDialog
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -182,9 +184,22 @@ class MainActivity : Activity() {
                     action = PlaybackService.PLAY
                     putExtra("path", entry.key); putExtra("title", entry.value.toString())
                 }
-                startService(i); status.text = "재생 중: " + entry.value
+                ContextCompat.startForegroundService(this, i); status.text = "재생 중: " + entry.value
             }
-            row.addView(name); row.addView(play)
+            val delete = makeButton("삭제")
+            delete.setOnClickListener {
+                AlertDialog.Builder(this)
+                    .setTitle("보관함에서 삭제")
+                    .setMessage(entry.value.toString() + " 파일을 삭제할까요?")
+                    .setNegativeButton("취소", null)
+                    .setPositiveButton("삭제") { _, _ ->
+                        runCatching { File(entry.key).delete() }
+                        getSharedPreferences("library", MODE_PRIVATE).edit().remove(entry.key).apply()
+                        renderLibrary()
+                        status.text = "파일을 삭제했습니다."
+                    }.show()
+            }
+            row.addView(name); row.addView(play); row.addView(delete)
             library.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 5 })
         }
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -194,7 +209,23 @@ class MainActivity : Activity() {
         resume.setOnClickListener { startService(Intent(this, PlaybackService::class.java).setAction(PlaybackService.RESUME)) }
         controls.addView(pause, LinearLayout.LayoutParams(0, -2, 1f))
         controls.addView(resume, LinearLayout.LayoutParams(0, -2, 1f))
+        val stop = makeButton("재생 종료")
+        stop.setOnClickListener { startService(Intent(this, PlaybackService::class.java).setAction(PlaybackService.STOP)) }
+        controls.addView(stop, LinearLayout.LayoutParams(0, -2, 1f))
         library.addView(controls)
+        val clear = makeButton("보관함 전체 비우기")
+        clear.setOnClickListener {
+            AlertDialog.Builder(this).setTitle("전체 파일 삭제")
+                .setMessage("앱에 저장된 음악 파일을 모두 삭제할까요?")
+                .setNegativeButton("취소", null)
+                .setPositiveButton("모두 삭제") { _, _ ->
+                    entries.forEach { runCatching { File(it.key).delete() } }
+                    getSharedPreferences("library", MODE_PRIVATE).edit().clear().apply()
+                    renderLibrary()
+                    status.text = "보관함을 비웠습니다."
+                }.show()
+        }
+        library.addView(clear, matchWrap())
     }
 
     private fun addText(parent: LinearLayout, value: String, size: Int, color: Int, bold: Boolean, gravity: Int = Gravity.START): TextView {
