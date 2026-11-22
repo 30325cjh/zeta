@@ -1,6 +1,7 @@
 package com.zeta.music
 
 import android.app.Activity
+import android.graphics.BitmapFactory
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -23,6 +24,10 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var results: LinearLayout
     private lateinit var library: LinearLayout
+    private lateinit var playlistUrl: EditText
+    private lateinit var playlistStatus: TextView
+    private lateinit var playlistResults: LinearLayout
+    private var parsedPlaylist: List<PlaylistTrack> = emptyList()
     private val pickerCode = 41
 
     data class Track(val title: String, val creator: String, val id: String, val license: String)
@@ -64,6 +69,24 @@ class MainActivity : Activity() {
         results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(results)
         gap(root, 22)
+        addText(root, "플레이리스트 분석", 18, -1, true)
+        addText(root, "공개 플레이리스트의 곡 정보를 분석하고, 공개 라이선스 음원만 별도로 찾습니다.", 12, 0xFFAAAAAA.toInt(), false)
+        playlistUrl = EditText(this).apply {
+            hint = "YouTube Music / YouTube 플레이리스트 URL"
+            setSingleLine(true); setTextColor(-1); setHintTextColor(0xFF888888.toInt())
+            setPadding(14, 10, 14, 10); setBackgroundColor(0xFF202020.toInt())
+        }
+        root.addView(playlistUrl, matchWrap())
+        val keyButton = makeButton("Gemini API 키 설정")
+        root.addView(keyButton, matchWrap())
+        keyButton.setOnClickListener { showGeminiKeyDialog() }
+        val analyzeButton = makeButton("Gemini 3.5 Flash-Lite로 플레이리스트 분석")
+        root.addView(analyzeButton, matchWrap())
+        analyzeButton.setOnClickListener { analyzePlaylist() }
+        playlistStatus = addText(root, "API 키를 한 번 저장한 뒤 플레이리스트를 분석하세요.", 12, 0xFFBBBBBB.toInt(), false)
+        playlistResults = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(playlistResults)
+        gap(root, 22)
         addText(root, "내 오프라인 보관함", 18, -1, true)
         addText(root, "저장된 음악은 인터넷 없이 재생할 수 있습니다.", 12, 0xFF999999.toInt(), false)
         library = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -71,6 +94,169 @@ class MainActivity : Activity() {
         gap(root, 18)
         addText(root, "안내: YouTube Music 음원 추출·변환은 지원하지 않습니다. 공개 라이선스 음원과 직접 보유한 파일을 재생합니다.", 11, 0xFF888888.toInt(), false)
         renderLibrary()
+    }
+
+    private fun showGeminiKeyDialog() {
+        val edit = EditText(this).apply {
+            hint = "Gemini API 키"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(getSharedPreferences("settings", MODE_PRIVATE).getString("gemini_api_key", ""))
+        }
+        AlertDialog.Builder(this).setTitle("Gemini API 키 설정").setMessage("키는 이 기기의 앱 내부 설정에 저장됩니다. GitHub Secret은 설치된 앱에서 직접 읽을 수 없습니다.")
+            .setView(edit).setNegativeButton("취소", null)
+            .setPositiveButton("저장") { _, _ ->
+                val key = edit.text.toString().trim()
+                if (key.isNotBlank()) {
+                    getSharedPreferences("settings", MODE_PRIVATE).edit().putString("gemini_api_key", key).apply()
+                    playlistStatus.text = "Gemini API 키를 저장했습니다."
+                }
+            }.show()
+    }
+
+    private fun analyzePlaylist() {
+        val url = playlistUrl.text.toString().trim()
+        if (!(url.startsWith("https://music.youtube.com/") || url.startsWith("https://www.youtube.com/") || url.startsWith("https://youtube.com/"))) {
+            playlistStatus.text = "공개 YouTube 또는 YouTube Music 플레이리스트 URL을 입력하세요."
+            return
+        }
+        val key = getSharedPreferences("settings", MODE_PRIVATE).getString("gemini_api_key", "").orEmpty()
+        if (key.isBlank()) {
+            showGeminiKeyDialog()
+            playlistStatus.text = "Gemini API 키가 필요합니다."
+            return
+        }
+        playlistStatus.text = "Gemini 3.5 Flash-Lite가 공개 플레이리스트 정보를 분석하고 있습니다…"
+        playlistResults.removeAllViews()
+        Thread {
+            try {
+                val tracks = PlaylistAnalyzer.analyze(http, key, url)
+                runOnUiThread {
+                    parsedPlaylist = tracks
+                    playlistStatus.text = if (tracks.isEmpty()) "곡 목록을 가져오지 못했습니다. 비공개·접근 제한 플레이리스트인지 확인하세요." else tracks.size.toString() + "곡을 확인했습니다."
+                    renderPlaylistTracks()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { playlistStatus.text = "플레이리스트 분석 실패: " + (e.message ?: "오류") }
+            }
+        }.start()
+    }
+
+    private fun renderPlaylistTracks() {
+        playlistResults.removeAllViews()
+        if (parsedPlaylist.isEmpty()) return
+        val batch = makeButton("공개 라이선스 음원 일괄 검색 및 다운로드")
+        batch.setOnClickListener { batchDownloadPlaylist() }
+        playlistResults.addView(batch, matchWrap())
+        parsedPlaylist.forEachIndexed { index, track ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(8, 8, 8, 8); setBackgroundColor(0xFF191919.toInt())
+            }
+            val thumb = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+            row.addView(thumb, LinearLayout.LayoutParams(72, 54))
+            if (track.thumbnail.startsWith("https://")) {
+                Thread {
+                    try {
+                        val bytes = http.newCall(Request.Builder().url(track.thumbnail).build()).execute().use { it.body?.bytes() }
+                        if (bytes != null) {
+                            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            runOnUiThread { thumb.setImageBitmap(bitmap) }
+                        }
+                    } catch (_: Exception) {}
+                }.start()
+            }
+            val text = TextView(this).apply {
+                this.text = (index + 1).toString() + ". " + track.title + "\n" + track.artist
+                textSize = 12f; setTextColor(-1); setPadding(10, 0, 4, 0)
+                layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+            }
+            row.addView(text)
+            val find = makeButton("검색")
+            find.setOnClickListener {
+                query.setText((track.title + " " + track.artist).trim())
+                searchArchive(query.text.toString())
+            }
+            row.addView(find)
+            playlistResults.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 5 })
+        }
+    }
+
+    private fun batchDownloadPlaylist() {
+        val tracks = parsedPlaylist
+        if (tracks.isEmpty()) return
+        playlistStatus.text = "공개 라이선스 음원을 순서대로 찾고 있습니다…"
+        Thread {
+            var saved = 0
+            var skipped = 0
+            tracks.forEachIndexed { index, item ->
+                try {
+                    val match = findLicensedArchiveTrack((item.title + " " + item.artist).trim())
+                    if (match == null) {
+                        skipped++
+                    } else {
+                        saveArchiveTrack(match)
+                        saved++
+                    }
+                } catch (_: Exception) { skipped++ }
+                val done = index + 1
+                runOnUiThread { playlistStatus.text = "일괄 처리 중… " + done + "/" + tracks.size + " · 저장 " + saved + " · 제외 " + skipped }
+            }
+            runOnUiThread {
+                renderLibrary()
+                playlistStatus.text = "일괄 처리 완료 · 저장 " + saved + "곡 · 라이선스/MP3 확인 불가로 제외 " + skipped + "곡"
+            }
+        }.start()
+    }
+
+    private fun findLicensedArchiveTrack(q: String): Track? {
+        val e = URLEncoder.encode(q, "UTF-8")
+        val url = "https://archive.org/advancedsearch.php?q=" + e +
+            "%20AND%20mediatype%3Aaudio&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=licenseurl&rows=10&page=1&output=json"
+        val body = http.newCall(Request.Builder().url(url).build()).execute().use { it.body?.string() ?: error("검색 응답 없음") }
+        val docs = JSONObject(body).getJSONObject("response").getJSONArray("docs")
+        for (i in 0 until docs.length()) {
+            val d = docs.getJSONObject(i)
+            val license = d.optString("licenseurl")
+            val allowed = license.contains("creativecommons.org/publicdomain", true) ||
+                license.contains("creativecommons.org/licenses/by/", true) ||
+                license.contains("creativecommons.org/licenses/by-sa/", true) ||
+                license.contains("creativecommons.org/licenses/zero/", true)
+            if (allowed) return Track(d.optString("title", q), d.optString("creator", ""), d.optString("identifier"), license)
+        }
+        return null
+    }
+
+    private fun saveArchiveTrack(t: Track) {
+        if (!(t.license.contains("creativecommons.org/publicdomain", true) ||
+            t.license.contains("creativecommons.org/licenses/by/", true) ||
+            t.license.contains("creativecommons.org/licenses/by-sa/", true) ||
+            t.license.contains("creativecommons.org/licenses/zero/", true))) error("허용된 라이선스가 아닙니다.")
+        val metaUrl = "https://archive.org/metadata/" + t.id
+        val meta = http.newCall(Request.Builder().url(metaUrl).build()).execute().use {
+            JSONObject(it.body?.string() ?: error("메타데이터 없음"))
+        }
+        val files = meta.getJSONArray("files")
+        var selected: JSONObject? = null
+        for (i in 0 until files.length()) {
+            val file = files.getJSONObject(i)
+            val format = file.optString("format")
+            if ((format.equals("VBR MP3", true) || format.equals("MP3", true)) && file.optString("private") != "true") {
+                selected = file; break
+            }
+        }
+        val fileInfo = selected ?: error("MP3 파일이 없습니다.")
+        val fileName = fileInfo.getString("name")
+        val encoded = fileName.split("/").joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+        val url = "https://archive.org/download/" + t.id + "/" + encoded
+        val safe = t.title.replace(Regex("[^가-힣a-zA-Z0-9._ -]"), "_").take(65).ifBlank { "audio" }
+        val out = File(getExternalFilesDir("Music") ?: filesDir, safe + "_" + System.currentTimeMillis() + ".mp3")
+        http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) error("HTTP " + response.code)
+            val body = response.body ?: error("파일이 비어 있습니다.")
+            if (body.contentLength() > 300L * 1024L * 1024L) error("파일이 너무 큽니다.")
+            body.byteStream().use { input -> out.outputStream().use { output -> input.copyTo(output) } }
+        }
+        getSharedPreferences("library", MODE_PRIVATE).edit().putString(out.absolutePath, t.title).apply()
     }
 
     private fun searchArchive(q: String) {
