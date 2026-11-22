@@ -36,7 +36,7 @@ class MainActivity : Activity() {
         setContentView(scroll)
 
         addText(root, "Z", 56, -1, true, Gravity.CENTER)
-        addText(root, "ZETA MUSIC", 23, -1, true, Gravity.CENTER)
+        addText(root, "ZETA", 23, -1, true, Gravity.CENTER)
         addText(root, "오프라인 음악 플레이어", 13, 0xFFAAAAAA.toInt(), false, Gravity.CENTER)
         gap(root, 22)
         addText(root, "무료·공개 라이선스 음원 찾기", 18, -1, true)
