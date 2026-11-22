@@ -1,22 +1,12 @@
-# ZETA — Personal Character Chat
+# Zeta Music
 
-A private, local-first Android character chat app inspired by ZETA-style interfaces.
+Private Android offline audio player.
 
-## Build
-Push to main or run the Android APK workflow manually. Download the **ZETA-APK** artifact.
+- Search Internet Archive for public-domain and permissive Creative Commons audio.
+- Download available MP3 files into app-private storage.
+- Import multiple audio files already owned by the user.
+- Foreground playback service with notification controls while the screen is off.
 
-## Gemini
-Add a GitHub Actions repository secret named `GEMINI_API_KEY`. The app also includes a local API-key setting as a fallback.
-Model: `gemini-2.5-flash-lite`.
+This app does not extract, rip, or convert YouTube Music streams to MP3. A playlist URL is not a downloadable audio source. Verify each item's license and attribution requirements before reuse.
 
-Chats and character profiles are stored locally on the device. No public feed, rankings, comments, coins, or paid features are included.
-
-
-## Included features
-- Local character profiles with custom avatar images
-- Multiple independent chat rooms with rename and deletion
-- Multi-character chat participation and `@Character: message` roleplay input
-- `*action text*` rendering and AI-assisted character profile creation
-- Gemini 2.5 Flash-Lite with retry handling
-
-- Adult roleplay preference is enabled by default and can be switched off in settings.
+Push to main or run the Android APK workflow manually. Download the ZETA-MUSIC-APK artifact from Actions.
