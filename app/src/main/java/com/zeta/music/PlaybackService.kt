@@ -24,7 +24,8 @@ class PlaybackService : Service() {
         private const val NOTIFICATION_ID = 7101
     }
     private var player: MediaPlayer? = null
-    private var currentTitle = "Zeta Music"
+    private var currentTitle = "Zeta"
+    private var paused = false
 
     override fun onCreate() {
         super.onCreate()
@@ -42,15 +43,16 @@ class PlaybackService : Service() {
                 startForeground(NOTIFICATION_ID, buildNotification("재생 준비 중"))
                 playFile(path)
             }
-            PAUSE -> { player?.pause(); updateNotification("일시정지") }
-            RESUME -> { player?.start(); updateNotification("재생 중") }
+            PAUSE -> { runCatching { player?.pause() }; paused = true; updateNotification("일시정지") }
+            RESUME -> { runCatching { player?.start() }; paused = false; updateNotification("재생 중") }
             STOP -> { releasePlayer(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun playFile(path: String) {
         releasePlayer()
+        paused = false
         val file = File(path)
         if (!file.exists()) { stopSelf(); return }
         player = MediaPlayer().apply {
@@ -73,7 +75,10 @@ class PlaybackService : Service() {
     private fun buildNotification(state: String): Notification {
         val open = PendingIntent.getActivity(this, 1, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val pause = PendingIntent.getService(this, 2, Intent(this, PlaybackService::class.java).setAction(PAUSE),
+        val toggleAction = if (paused) RESUME else PAUSE
+        val toggleLabel = if (paused) "계속 재생" else "일시정지"
+        val toggleIcon = if (paused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause
+        val toggle = PendingIntent.getService(this, 2, Intent(this, PlaybackService::class.java).setAction(toggleAction),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val stop = PendingIntent.getService(this, 3, Intent(this, PlaybackService::class.java).setAction(STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -81,7 +86,7 @@ class PlaybackService : Service() {
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(currentTitle).setContentText(state).setContentIntent(open)
             .setOngoing(state == "재생 중" || state == "재생 준비 중")
-            .addAction(android.R.drawable.ic_media_pause, "일시정지", pause)
+            .addAction(toggleIcon, toggleLabel, toggle)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "종료", stop).build()
     }
 
