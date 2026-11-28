@@ -1,24 +1,16 @@
-# zeta
+# Zeta APK Restorer
 
-Personal Android offline music player for Android 8.0+.
+Android APK file analyzer and project recovery exporter.
 
 ## Features
-- Analyze a public YouTube / YouTube Music playlist page with Gemini 3.5 Flash-Lite to display track names, artists, and available thumbnails.
-- Batch-search Internet Archive for matching public-domain / permissively licensed recordings.
-- Download available MP3 files only when the Archive search result advertises an allowed Creative Commons or public-domain license.
-- Import multiple audio files already owned by the user.
-- Local offline library with per-file deletion and clear-library controls.
-- Foreground playback service with notification pause/resume/stop controls and wake lock for screen-off playback.
+- Pick an APK using Android's system file picker
+- Safely extract APK ZIP entries with path traversal and expanded-size checks
+- Preserve DEX bytecode, resources, assets, native libraries, manifest and the original APK
+- Export a ZIP containing the extracted files, a recovery report and a Gradle project skeleton
+- Build a debug APK with GitHub Actions
 
-## Gemini API key
-The app asks for the Gemini API key once and stores it in the app's private local preferences. A GitHub Actions secret is not available to an installed app. The key is deliberately not embedded into this public repository's APK, because anyone who downloads the APK could extract it.
-
-Model: `gemini-3.5-flash-lite`.
-
-## Important limitations
-- The app does not extract, rip, or convert YouTube Music streams to MP3. A playlist URL is used for public track metadata only; the original YouTube audio is not downloaded.
-- Batch download searches for separate recordings that are advertised under public-domain / Creative Commons terms. A match is not guaranteed for every track.
-- Check each item's license and attribution requirements before reuse. Search metadata is not a substitute for reviewing the item page.
+## Important limitation
+An APK is a compiled package, not the original source project. This tool preserves the DEX bytecode and packaged resources; it does **not** reconstruct original Kotlin/Java source, comments, original Gradle configuration, or a guaranteed buildable clone. Binary AndroidManifest.xml and compiled resources are preserved as-is. A separate DEX decompiler / Android resource decoder would be required for readable reconstructed code.
 
 ## Build
-Push to `main` or run the Android APK workflow manually. Download the `ZETA-MUSIC-APK` artifact from Actions.
+GitHub Actions builds `app-debug.apk` on pushes to `main` and on manual workflow dispatch.

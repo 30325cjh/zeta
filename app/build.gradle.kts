@@ -3,10 +3,10 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 android {
-    namespace = "com.zeta.music"
+    namespace = "com.zeta.apkrestorer"
     compileSdk = 35
     defaultConfig {
-        applicationId = "com.zeta.music"
+        applicationId = "com.zeta.apkrestorer"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -17,8 +17,4 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-}
-dependencies {
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("androidx.core:core:1.15.0")
 }

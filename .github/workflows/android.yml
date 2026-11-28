@@ -1,11 +1,8 @@
-name: Zeta Music APK
+name: Build APK
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
-concurrency:
-  group: zeta-android-apk-${{ github.ref }}
-  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -20,13 +17,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools platforms;android-35 build-tools;35.0.0
-      - name: Build APK
+      - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: ZETA-MUSIC-APK
-          path: app/build/outputs/apk/debug/*.apk
+          name: zeta-apk-restorer
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
