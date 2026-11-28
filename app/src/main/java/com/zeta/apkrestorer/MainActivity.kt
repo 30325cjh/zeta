@@ -169,7 +169,7 @@ class MainActivity : Activity() {
             File(gradle, "app/build.gradle.kts").writeText("plugins { id(\"com.android.application\") }\nandroid { namespace = \"recovered.placeholder\"; compileSdk = 35; defaultConfig { applicationId = \"recovered.placeholder\"; minSdk = 23; targetSdk = 35; versionCode = 1; versionName = \"1.0\" } }\n")
             restoredDir = root
             runOnUiThread {
-                status.text = "분석 완료: 파일 $count개 추출"
+                status.text = "분석 완료: 추출 파일 수 $count"
                 details.text = meta + "\n\nZIP 내보내기를 누르면 원본 APK, 추출 리소스, DEX, 프로젝트 뼈대를 저장합니다."
                 exportButton.isEnabled = true
             }
